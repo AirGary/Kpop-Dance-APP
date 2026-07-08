@@ -13,6 +13,7 @@ struct ImportView: View {
     @State private var isImporting = false
     @State private var importErrorMessage: String?
     @State private var activeImportRequestID = UUID()
+    @State private var isTitleAutofilledFromImport = false
 
     private let importedVideoStore = ImportedVideoStore()
 
@@ -21,7 +22,9 @@ struct ImportView: View {
             VStack(alignment: .leading, spacing: 18) {
                 VideoImportCard(
                     sourceVideoName: sourceVideoName,
-                    importedVideoDuration: importedVideo?.duration
+                    importedVideoName: importedVideo?.displayName,
+                    importedVideoDuration: importedVideo?.duration,
+                    isImporting: isImporting
                 )
 
                 VStack(alignment: .leading, spacing: 14) {
@@ -35,15 +38,15 @@ struct ImportView: View {
                     .buttonStyle(.borderedProminent)
 
                     Button {
-                        let previousSourceVideoName = sourceVideoName
                         invalidateImportRequest()
                         selectedVideoItem = nil
                         importedVideo = nil
                         isImporting = false
                         importErrorMessage = nil
                         sourceVideoName = "未选择视频"
-                        if title == previousSourceVideoName {
+                        if isTitleAutofilledFromImport {
                             title = ""
+                            isTitleAutofilledFromImport = false
                         }
                     } label: {
                         Label("清除当前选择", systemImage: "xmark.circle")
@@ -53,6 +56,9 @@ struct ImportView: View {
 
                     if isImporting {
                         ProgressView("正在导入视频...")
+                        Text("正在复制视频到本地并生成练习素材，请稍候。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     if let importErrorMessage {
@@ -71,9 +77,24 @@ struct ImportView: View {
                     TextField("例如：XG - GALA", text: $title)
                         .textInputAutocapitalization(.never)
                         .textFieldStyle(.roundedBorder)
+                        .onChange(of: title) { _, newValue in
+                            if newValue.trimmingCharacters(in: .whitespacesAndNewlines) != (importedVideo?.displayName ?? "") {
+                                isTitleAutofilledFromImport = false
+                            }
+                        }
 
                     if let importedVideo {
-                        Text("时长 \(formattedDuration(importedVideo.duration))")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("文件名：\(importedVideo.displayName)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text("时长：\(formattedDuration(importedVideo.duration))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Text("导入后会自动显示文件名和时长摘要。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -140,6 +161,7 @@ struct ImportView: View {
 
             if normalizedTitle.isEmpty {
                 title = imported.displayName
+                isTitleAutofilledFromImport = true
             }
             isImporting = false
         } catch {
@@ -170,7 +192,9 @@ private enum ImportError: Error {
 
 private struct VideoImportCard: View {
     let sourceVideoName: String
+    let importedVideoName: String?
     let importedVideoDuration: Double?
+    let isImporting: Bool
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
@@ -197,8 +221,20 @@ private struct VideoImportCard: View {
                     .foregroundStyle(.white.opacity(0.8))
                     .lineLimit(1)
 
+                if let importedVideoName {
+                    Text("文件名：\(importedVideoName)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+
                 if let importedVideoDuration {
-                    Text("时长 \(formattedDuration(importedVideoDuration))")
+                    Text("时长：\(formattedDuration(importedVideoDuration))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.9))
+                }
+
+                if isImporting {
+                    Text("导入中，完成后会自动创建本地副本。")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.9))
                 }

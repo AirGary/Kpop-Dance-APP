@@ -32,9 +32,9 @@ struct PracticeView: View {
                     .disabled(player == nil)
 
                 HStack {
-                    Text(timeLabel(for: currentTime))
+                    Text("当前 \(timeLabel(for: currentTime))")
                     Spacer()
-                    Text(timeLabel(for: safeDuration))
+                    Text("总时长 \(timeLabel(for: safeDuration))")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -60,9 +60,13 @@ struct PracticeView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .disabled(player == nil)
 
                     Toggle("镜像模式", isOn: mirrorBinding)
+                        .disabled(player == nil)
+
                     Toggle("片段循环", isOn: $loopEnabled)
+                        .disabled(player == nil)
 
                     HStack(spacing: 10) {
                         ControlChip(title: "Beat", icon: "metronome", color: AppUI.cyan)
@@ -72,6 +76,7 @@ struct PracticeView: View {
                 }
                 .padding(16)
                 .cardBackground()
+                .opacity(player == nil ? 0.78 : 1)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("时间轴节点")
@@ -329,13 +334,23 @@ private struct PracticeUnavailableView: View {
     let sourceVideoName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("练习视频不可用", systemImage: "exclamationmark.triangle")
-                .font(.headline)
-                .foregroundStyle(AppUI.coral)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppUI.coral)
+
+                Text("视频不可用")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+            }
 
             Text("未找到可播放的本地视频文件：\(sourceVideoName)")
                 .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Text("请返回导入页重新选择本地视频后再继续练习。")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 230, alignment: .leading)
