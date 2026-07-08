@@ -12,6 +12,7 @@ struct ImportView: View {
     @State private var importedVideo: ImportedVideo?
     @State private var isImporting = false
     @State private var importErrorMessage: String?
+    @State private var activeImportRequestID = UUID()
 
     private let importedVideoStore = ImportedVideoStore()
 
@@ -35,8 +36,10 @@ struct ImportView: View {
 
                     Button {
                         let previousSourceVideoName = sourceVideoName
+                        invalidateImportRequest()
                         selectedVideoItem = nil
                         importedVideo = nil
+                        isImporting = false
                         importErrorMessage = nil
                         sourceVideoName = "未选择视频"
                         if title == previousSourceVideoName {
@@ -102,7 +105,9 @@ struct ImportView: View {
         .background(AppUI.background)
         .task(id: selectedVideoItem) {
             guard let selectedVideoItem else { return }
-            await importSelectedVideo(selectedVideoItem)
+            let requestID = UUID()
+            activeImportRequestID = requestID
+            await importSelectedVideo(selectedVideoItem, requestID: requestID)
         }
         .onChange(of: selectedVideoItem) { _, newValue in
             if newValue == nil && !isImporting && importedVideo == nil {
@@ -118,7 +123,7 @@ struct ImportView: View {
     }
 
     @MainActor
-    private func importSelectedVideo(_ item: PhotosPickerItem) async {
+    private func importSelectedVideo(_ item: PhotosPickerItem, requestID: UUID) async {
         isImporting = true
         importErrorMessage = nil
         importedVideo = nil
@@ -129,23 +134,33 @@ struct ImportView: View {
             }
 
             let imported = try await importedVideoStore.copyVideo(from: sourceURL)
+            guard isActiveImportRequest(requestID) else { return }
             importedVideo = imported
             sourceVideoName = imported.displayName
 
             if normalizedTitle.isEmpty {
                 title = imported.displayName
             }
+            isImporting = false
         } catch {
+            guard isActiveImportRequest(requestID) else { return }
             importedVideo = nil
             sourceVideoName = "未选择视频"
             importErrorMessage = "视频导入失败，请重新选择。"
+            isImporting = false
         }
-
-        isImporting = false
     }
 
     private func formattedDuration(_ duration: Double) -> String {
         formatDuration(duration)
+    }
+
+    private func isActiveImportRequest(_ requestID: UUID) -> Bool {
+        activeImportRequestID == requestID
+    }
+
+    private func invalidateImportRequest() {
+        activeImportRequestID = UUID()
     }
 }
 
