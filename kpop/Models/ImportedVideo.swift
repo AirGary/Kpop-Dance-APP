@@ -19,15 +19,20 @@ struct ImportedVideoStore {
 
         try FileManager.default.copyItem(at: sourceURL, to: fileURL)
 
-        let asset = AVURLAsset(url: fileURL)
-        let duration = try await asset.load(.duration).seconds
-        let name = sourceURL.deletingPathExtension().lastPathComponent
+        do {
+            let asset = AVURLAsset(url: fileURL)
+            let duration = try await asset.load(.duration).seconds
+            let name = sourceURL.deletingPathExtension().lastPathComponent
 
-        return ImportedVideo(
-            fileURL: fileURL,
-            displayName: name,
-            duration: duration.isFinite ? duration : 0
-        )
+            return ImportedVideo(
+                fileURL: fileURL,
+                displayName: name,
+                duration: duration.isFinite ? duration : 0
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw error
+        }
     }
 
     private func storageDirectory() throws -> URL {
@@ -44,17 +49,4 @@ struct ImportedVideoStore {
         )
         return directory
     }
-}
-
-private func persistenceCompileContract() {
-    let project = DanceProject(
-        title: "Demo",
-        sourceVideoPath: "/tmp/demo.mov",
-        videoDuration: 92.0
-    )
-    _ = project.sourceVideoPath
-    _ = project.videoDuration
-
-    let store = ImportedVideoStore()
-    _ = store
 }

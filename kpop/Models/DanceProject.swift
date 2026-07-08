@@ -102,7 +102,7 @@ final class DanceProject {
     var title: String
     var sourceVideoName: String
     var sourceVideoPath: String?
-    var videoDuration: Double
+    var videoDuration: Double = 0
     var selectedDancerName: String?
     var mirrorEnabled: Bool
     var defaultPlaybackRate: Double

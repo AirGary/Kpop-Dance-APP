@@ -117,3 +117,81 @@ So the code-level compile verification for this task is currently represented by
 ## Remaining Concern
 
 The brief's exact simulator build could not be completed on this machine until an iOS Simulator runtime is installed and a matching destination exists. Once that environment issue is resolved, re-running the requested `xcodebuild` command should be the next verification step.
+
+## Review Fix Follow-Up
+
+Addressed the three required findings with minimal changes limited to the owned Task 1 files.
+
+### 1. Migration-safe default for `videoDuration`
+
+Updated `DanceProject.videoDuration` from a bare non-optional property to a property-level defaulted field:
+
+```swift
+var videoDuration: Double = 0
+```
+
+This keeps the field non-optional for downstream consumers while giving SwiftData an evident default value at the model property level, which is safer for existing persisted stores than relying only on the initializer default.
+
+### 2. Cleanup copied file if metadata loading fails
+
+Wrapped `AVURLAsset` metadata loading in `do/catch` and remove the copied file before rethrowing:
+
+```swift
+do {
+    ...
+} catch {
+    try? FileManager.default.removeItem(at: fileURL)
+    throw error
+}
+```
+
+This prevents orphaned imported files when duration loading fails after the copy succeeds.
+
+### 3. Removed compile-contract helper from production source
+
+Deleted the `persistenceCompileContract` helper entirely from `ImportedVideo.swift` so no compile-target-only helper remains in shipped code.
+
+## Follow-Up Verification
+
+Focused compile verification after the fixes:
+
+```bash
+xcrun swiftc -typecheck 'kpop/Models/DanceProject.swift' 'kpop/Models/ImportedVideo.swift'
+```
+
+Observed success with exit code `0`.
+
+Focused source checks covering the reviewed concerns:
+
+```bash
+rg -n "persistenceCompileContract|removeItem\\(at: fileURL\\)|videoDuration: Double = 0" \
+  'kpop/Models/DanceProject.swift' \
+  'kpop/Models/ImportedVideo.swift'
+```
+
+Observed:
+
+- `videoDuration: Double = 0` present in `DanceProject`
+- cleanup removal present in `ImportedVideoStore`
+- no `persistenceCompileContract` symbol remains
+
+Formatting verification:
+
+```bash
+git diff --check -- 'kpop/Models/DanceProject.swift' 'kpop/Models/ImportedVideo.swift'
+```
+
+Observed success with no diff-check issues.
+
+Requested simulator build re-run:
+
+```bash
+xcodebuild -project kpop.xcodeproj -scheme kpop -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 16' build
+```
+
+Still blocked by local simulator availability rather than source code:
+
+```text
+xcodebuild: error: Unable to find a device matching the provided destination specifier:
+{ platform:iOS Simulator, OS:latest, name:iPhone 16 }
+```
