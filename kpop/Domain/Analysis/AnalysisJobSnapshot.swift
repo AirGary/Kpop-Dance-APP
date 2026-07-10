@@ -1,6 +1,6 @@
 import Foundation
 
-struct AnalysisJobSnapshot: Identifiable, Codable, Equatable, Sendable {
+nonisolated struct AnalysisJobSnapshot: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     let projectID: UUID
     var state: AnalysisJobState

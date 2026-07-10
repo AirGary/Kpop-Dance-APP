@@ -1,10 +1,10 @@
 import Foundation
 
-enum AnalysisStateTransitionError: Error, Equatable, Sendable {
+nonisolated enum AnalysisStateTransitionError: Error, Equatable, Sendable {
     case invalidTransition(from: AnalysisJobState, to: AnalysisJobState)
 }
 
-enum AnalysisStateMachine {
+nonisolated enum AnalysisStateMachine {
     private static let transitions: [AnalysisJobState: Set<AnalysisJobState>] = [
         .draft: [.preparing, .cancelling],
         .preparing: [.uploading, .failedRecoverable, .failedTerminal, .cancelling],

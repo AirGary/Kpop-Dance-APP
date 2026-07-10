@@ -1,6 +1,6 @@
 import Foundation
 
-enum AnalysisJobState: String, Codable, CaseIterable, Sendable {
+nonisolated enum AnalysisJobState: String, Codable, CaseIterable, Sendable {
     case draft
     case preparing
     case uploading
