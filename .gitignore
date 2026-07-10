@@ -1,6 +1,12 @@
 .DS_Store
-.superpowers/
-.worktrees/
+
+# Xcode
 DerivedData/
+build/
 *.xcuserstate
 xcuserdata/
+
+# Local tool configuration
+.trae/
+.superpowers/
+.worktrees/
