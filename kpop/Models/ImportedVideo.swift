@@ -8,16 +8,16 @@ struct ImportedVideo {
 }
 
 struct ImportedVideoStore {
+    private let fileStore: VideoFileStore?
+
+    init(fileStore: VideoFileStore? = nil) {
+        self.fileStore = fileStore
+    }
+
     func copyVideo(from sourceURL: URL) async throws -> ImportedVideo {
-        let directory = try storageDirectory()
-        let ext = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
-        let fileURL = directory.appendingPathComponent("\(UUID().uuidString).\(ext)")
-
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            try FileManager.default.removeItem(at: fileURL)
-        }
-
-        try FileManager.default.copyItem(at: sourceURL, to: fileURL)
+        let store = try fileStore ?? VideoFileStore.applicationSupport()
+        let relativePath = try store.importVideo(from: sourceURL)
+        let fileURL = try store.resolve(relativePath)
 
         do {
             let asset = AVURLAsset(url: fileURL)
@@ -30,23 +30,8 @@ struct ImportedVideoStore {
                 duration: duration.isFinite ? duration : 0
             )
         } catch {
-            try? FileManager.default.removeItem(at: fileURL)
+            try? store.delete(relativePath)
             throw error
         }
-    }
-
-    private func storageDirectory() throws -> URL {
-        let base = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let directory = base.appendingPathComponent("ImportedVideos", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
-        )
-        return directory
     }
 }
