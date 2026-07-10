@@ -7,12 +7,15 @@ struct DancerPickView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 22) {
                 DancerPreview(selectedDancer: selectedDancer)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("选择目标舞者")
-                        .font(.headline)
+                    StageSectionHeader(
+                        eyebrow: "Selection",
+                        title: "选择目标舞者",
+                        detail: "锁定本次主要学习对象。完成后会直接生成新的练习时间轴。"
+                    )
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         ForEach(DanceProject.dancerOptions) { dancer in
@@ -25,7 +28,7 @@ struct DancerPickView: View {
                         }
                     }
                 }
-                .padding(16)
+                .padding(AppUI.panelPadding)
                 .cardBackground()
 
                 VStack(spacing: 10) {
@@ -52,10 +55,10 @@ struct DancerPickView: View {
                     }
                     .buttonStyle(.bordered)
                 }
-                .padding(16)
+                .padding(AppUI.panelPadding)
                 .cardBackground()
             }
-            .padding(18)
+            .padding(20)
         }
         .background(AppUI.background)
         .navigationTitle("选择舞者")
@@ -68,10 +71,10 @@ private struct DancerPreview: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.black.opacity(0.88), .blue.opacity(0.45)],
+                        colors: [.black.opacity(0.88), AppUI.violet.opacity(0.72), AppUI.cyan.opacity(0.48)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -92,8 +95,7 @@ private struct DancerPreview: View {
             }
             .padding(.horizontal, 18)
         }
-        .frame(height: 190)
-        .cardBackground()
+        .frame(height: 230)
         .accessibilityLabel("舞者检测预览")
     }
 }
@@ -127,14 +129,17 @@ private struct DancerOptionCard: View {
 
                 Text(dancer.position)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppUI.inkSoft)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? AppUI.violet.opacity(0.1) : .white, in: RoundedRectangle(cornerRadius: 8))
+            .background(
+                isSelected ? AppUI.violet.opacity(0.12) : AppUI.panel,
+                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? AppUI.violet : Color.black.opacity(0.06), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(isSelected ? AppUI.violet : AppUI.divider, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

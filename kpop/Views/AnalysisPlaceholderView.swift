@@ -6,15 +6,19 @@ struct AnalysisView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 14) {
+                    StageSectionHeader(
+                        eyebrow: "Analysis",
+                        title: project.title,
+                        detail: "整理关键帧、节拍和动作节点，为后续舞者选择与练习时间轴做准备。"
+                    )
+
                     HStack {
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(project.title)
-                                .font(.title2.weight(.bold))
                             Text(project.sourceVideoName)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppUI.inkSoft)
                         }
 
                         Spacer()
@@ -25,16 +29,19 @@ struct AnalysisView: View {
                     ProgressView(value: progress)
                         .tint(statusColor)
 
-                    Text("\(Int(progress * 100))%")
+                    Text("分析进度 \(Int(progress * 100))%")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppUI.inkSoft)
                 }
-                .padding(16)
+                .padding(AppUI.panelPadding)
                 .cardBackground()
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("分析步骤")
-                        .font(.headline)
+                    StageSectionHeader(
+                        eyebrow: "Pipeline",
+                        title: "分析步骤",
+                        detail: "当前以轻量流程模拟真实分析阶段，界面会保持和后续播放器一致的训练工具风格。"
+                    )
 
                     ForEach(Array(DanceProject.analysisSteps.enumerated()), id: \.element.id) { index, step in
                         AnalysisStepRow(
@@ -44,7 +51,7 @@ struct AnalysisView: View {
                         )
                     }
                 }
-                .padding(16)
+                .padding(AppUI.panelPadding)
                 .cardBackground()
 
                 VStack(spacing: 10) {
@@ -71,10 +78,10 @@ struct AnalysisView: View {
                     }
                     .buttonStyle(.bordered)
                 }
-                .padding(16)
+                .padding(AppUI.panelPadding)
                 .cardBackground()
             }
-            .padding(18)
+            .padding(20)
         }
         .background(AppUI.background)
         .navigationTitle("分析")
@@ -144,9 +151,9 @@ private struct AnalysisStepRow: View {
                     .font(.subheadline.weight(.semibold))
                 Text(step.detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppUI.inkSoft)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 }

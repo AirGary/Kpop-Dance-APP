@@ -1,4 +1,5 @@
 import AVFoundation
+import SwiftData
 import SwiftUI
 
 struct PracticeView: View {
@@ -13,46 +14,73 @@ struct PracticeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                if let player {
-                    PracticeStageView(
-                        player: player,
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 14) {
+                    StageSectionHeader(
+                        eyebrow: "Practice",
                         title: project.title,
-                        dancerName: project.selectedDancerName ?? "未选择",
-                        currentTime: currentTime,
-                        isMirrored: project.mirrorEnabled,
-                        isPlaying: isPlaying,
-                        onTogglePlayback: togglePlayback
+                        detail: "围绕播放器集中练习当前片段，使用速度、镜像和节点跳转快速回放难点动作。"
                     )
-                } else {
-                    PracticeUnavailableView(sourceVideoName: project.sourceVideoName)
-                }
 
-                Slider(value: playbackTimeBinding, in: 0...safeDuration)
-                    .disabled(player == nil)
-
-                HStack {
-                    Text("当前 \(timeLabel(for: currentTime))")
-                    Spacer()
-                    Text("总时长 \(timeLabel(for: safeDuration))")
+                    if let player {
+                        PracticeStageView(
+                            player: player,
+                            title: project.title,
+                            dancerName: project.selectedDancerName ?? "未选择",
+                            currentTime: currentTime,
+                            totalDuration: safeDuration,
+                            isMirrored: project.mirrorEnabled,
+                            isPlaying: isPlaying,
+                            playbackRateTitle: project.playbackRate.title,
+                            onTogglePlayback: togglePlayback
+                        )
+                    } else {
+                        PracticeUnavailableView(sourceVideoName: project.sourceVideoName)
+                    }
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(16)
-                .cardBackground()
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("练习控制")
-                        .font(.headline)
+                    StageSectionHeader(
+                        eyebrow: "Transport",
+                        title: "播放器控制",
+                        detail: "拖动进度条快速定位，速度和镜像会直接作用于当前练习视频。"
+                    )
 
-                    Button {
-                        togglePlayback()
-                    } label: {
-                        Label(isPlaying ? "暂停" : "播放", systemImage: isPlaying ? "pause.fill" : "play.fill")
-                            .frame(maxWidth: .infinity)
+                    Slider(value: playbackTimeBinding, in: 0...safeDuration)
+                        .tint(AppUI.violet)
+                        .disabled(player == nil)
+
+                    HStack {
+                        Text("当前 \(timeLabel(for: currentTime))")
+                        Spacer()
+                        Text("总时长 \(timeLabel(for: safeDuration))")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(player == nil)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppUI.inkSoft)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            togglePlayback()
+                        } label: {
+                            Label(isPlaying ? "暂停练习" : "开始练习", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(player == nil)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("当前速度")
+                                .font(.caption)
+                                .foregroundStyle(AppUI.inkSoft)
+                            Text(project.playbackRate.title)
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(AppUI.ink)
+                        }
+                        .frame(width: 90, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .cardBackground(.muted)
+                    }
 
                     Picker("播放速度", selection: playbackRateBinding) {
                         ForEach(PlaybackRate.allCases) { rate in
@@ -62,11 +90,23 @@ struct PracticeView: View {
                     .pickerStyle(.segmented)
                     .disabled(player == nil)
 
-                    Toggle("镜像模式", isOn: mirrorBinding)
+                    HStack(spacing: 12) {
+                        ToggleCard(
+                            title: "镜像模式",
+                            detail: "适合照镜子跟练",
+                            systemImage: "rectangle.leadinghalf.filled",
+                            isOn: mirrorBinding
+                        )
                         .disabled(player == nil)
 
-                    Toggle("片段循环", isOn: $loopEnabled)
+                        ToggleCard(
+                            title: "片段循环",
+                            detail: "结尾自动回到开头",
+                            systemImage: "repeat",
+                            isOn: $loopEnabled
+                        )
                         .disabled(player == nil)
+                    }
 
                     HStack(spacing: 10) {
                         ControlChip(title: "Beat", icon: "metronome", color: AppUI.cyan)
@@ -74,34 +114,36 @@ struct PracticeView: View {
                         ControlChip(title: project.mirrorEnabled ? "Mirror" : "Normal", icon: "rectangle.triangle.2.outward", color: project.mirrorEnabled ? AppUI.coral : .secondary)
                     }
                 }
-                .padding(16)
-                .cardBackground()
+                .padding(AppUI.panelPadding)
+                .cardBackground(.primary)
                 .opacity(player == nil ? 0.78 : 1)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("时间轴节点")
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 14) {
+                    StageSectionHeader(
+                        eyebrow: "Timeline",
+                        title: "动作节点",
+                        detail: "点击任意节点跳转到对应时间点，优先重复练习关键动作和高难片段。"
+                    )
 
                     ForEach(visibleTimelineNodes) { node in
                         Button {
                             seek(to: node.time)
                         } label: {
-                            TimelineNodeRow(node: node)
+                            TimelineNodeRow(node: node, isActive: isNodeActive(node))
                         }
                         .buttonStyle(.plain)
                         .disabled(player == nil)
                     }
                 }
-                .padding(16)
-                .cardBackground()
+                .padding(AppUI.panelPadding)
+                .cardBackground(.primary)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("换位提示", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                        .font(.headline)
-
-                    Text("当前目标舞者保持中间主位，下一段向左侧前排移动。")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 14) {
+                    StageSectionHeader(
+                        eyebrow: "Formation",
+                        title: "换位提示",
+                        detail: "当前目标舞者保持中间主位，下一段向左侧前排移动。"
+                    )
 
                     Button {
                         router.popToRoot()
@@ -111,10 +153,10 @@ struct PracticeView: View {
                     }
                     .buttonStyle(.bordered)
                 }
-                .padding(16)
-                .cardBackground()
+                .padding(AppUI.panelPadding)
+                .cardBackground(.muted)
             }
-            .padding(18)
+            .padding(20)
         }
         .background(AppUI.background)
         .onAppear {
@@ -254,6 +296,10 @@ struct PracticeView: View {
         touch()
     }
 
+    private func isNodeActive(_ node: DanceTimelineNode) -> Bool {
+        abs(currentTime - node.time) < 3
+    }
+
     private func timeLabel(for time: TimeInterval) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
@@ -271,8 +317,43 @@ private struct ControlChip: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(color)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.vertical, 10)
+            .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct ToggleCard: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppUI.violet)
+                    .frame(width: 34, height: 34)
+                    .background(AppUI.violet.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                Spacer()
+
+                Toggle("", isOn: $isOn)
+                    .labelsHidden()
+            }
+
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppUI.ink)
+
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(AppUI.inkSoft)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .cardBackground(.muted)
     }
 }
 
@@ -281,23 +362,44 @@ private struct PracticeStageView: View {
     let title: String
     let dancerName: String
     let currentTime: TimeInterval
+    let totalDuration: TimeInterval
     let isMirrored: Bool
     let isPlaying: Bool
+    let playbackRateTitle: String
     let onTogglePlayback: () -> Void
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             PracticePlayerView(player: player, isMirrored: isMirrored)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                Text("目标：\(dancerName) · \(timeLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.85))
+            LinearGradient(
+                colors: [.black.opacity(0.55), .clear, .black.opacity(0.72)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    StatusBadge(text: playbackRateTitle, systemImage: "speedometer", color: .white)
+                    Spacer()
+                    StatusBadge(text: isMirrored ? "镜像中" : "正常方向", systemImage: "rectangle.triangle.2.outward", color: .white)
+                }
+
+                Spacer()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("目标：\(dancerName)")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.84))
+                    Text("\(timeLabel(currentTime)) / \(timeLabel(totalDuration))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
             }
-            .foregroundStyle(.white)
-            .padding(12)
+            .padding(18)
 
             VStack {
                 HStack {
@@ -305,27 +407,31 @@ private struct PracticeStageView: View {
 
                     Button(action: onTogglePlayback) {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(12)
-                            .background(.black.opacity(0.45), in: Circle())
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(AppUI.ink)
+                            .frame(width: 56, height: 56)
+                            .background(.white, in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .padding(12)
+                    .padding(18)
                 }
 
                 Spacer()
             }
         }
-        .frame(height: 230)
-        .background(.black, in: RoundedRectangle(cornerRadius: 8))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(height: 300)
+        .background(.black, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
         .accessibilityLabel("练习视频预览")
     }
 
-    private var timeLabel: String {
-        let minutes = Int(currentTime) / 60
-        let seconds = Int(currentTime) % 60
+    private func timeLabel(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
 }
@@ -334,66 +440,108 @@ private struct PracticeUnavailableView: View {
     let sourceVideoName: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.title3.weight(.semibold))
+                    .font(.title2)
                     .foregroundStyle(AppUI.coral)
+                    .frame(width: 48, height: 48)
+                    .background(AppUI.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-                Text("视频不可用")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("视频不可用")
+                        .font(.headline)
+                        .foregroundStyle(AppUI.ink)
+                    Text("未找到可播放的本地视频文件：\(sourceVideoName)")
+                        .font(.subheadline)
+                        .foregroundStyle(AppUI.inkSoft)
+                }
             }
 
-            Text("未找到可播放的本地视频文件：\(sourceVideoName)")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
             Text("请返回导入页重新选择本地视频后再继续练习。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.subheadline)
+                .foregroundStyle(AppUI.inkSoft)
         }
-        .frame(maxWidth: .infinity, minHeight: 230, alignment: .leading)
-        .padding(16)
-        .cardBackground()
+        .frame(maxWidth: .infinity, minHeight: 300, alignment: .leading)
+        .padding(20)
+        .cardBackground(.muted)
     }
 }
 
 private struct TimelineNodeRow: View {
     let node: DanceTimelineNode
+    let isActive: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
+            VStack(spacing: 6) {
+                Circle()
+                    .fill(isActive ? nodeColor : nodeColor.opacity(0.25))
+                    .frame(width: 12, height: 12)
+
+                Rectangle()
+                    .fill(AppUI.divider)
+                    .frame(width: 2, height: 44)
+                    .opacity(node.isHard ? 0.8 : 0.35)
+            }
+
             Text(node.kind.title)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 28)
-                .background(nodeColor, in: RoundedRectangle(cornerRadius: 8))
+                .frame(width: 52, height: 30)
+                .background(nodeColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(node.label)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppUI.ink)
                 Text(node.timeLabel)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppUI.inkSoft)
             }
 
             Spacer()
 
             if node.isHard {
                 Label("难点", systemImage: "flame.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppUI.coral)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(isActive ? nodeColor.opacity(0.1) : .clear)
+        )
     }
 
     private var nodeColor: Color {
         switch node.kind {
-        case .beat: .blue
-        case .keyAction: .purple
-        case .transition: .teal
+        case .beat: AppUI.cyan
+        case .keyAction: AppUI.violet
+        case .transition: AppUI.lime
         }
     }
+}
+
+#Preview("Practice Screen") {
+    NavigationStack {
+        PracticeView(
+            project: {
+                let project = DanceProject(
+                    title: "XG - GALA",
+                    sourceVideoName: "Preview Video",
+                    videoDuration: 76,
+                    selectedDancerName: "Dancer 2",
+                    defaultPlaybackRate: PlaybackRate.threeQuarter.rawValue,
+                    phase: .practicing
+                )
+                project.mirrorEnabled = true
+                return project
+            }()
+        )
+        .environmentObject(AppRouter())
+    }
+    .modelContainer(PreviewProjects.previewContainer())
 }
