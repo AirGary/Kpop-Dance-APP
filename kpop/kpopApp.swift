@@ -14,7 +14,7 @@ struct kpopApp: App {
 
     init() {
         do {
-            modelContainer = try ModelContainer(for: DanceProject.self)
+            modelContainer = try ModelContainerFactory.make()
         } catch {
             fatalError("Failed to create SwiftData container: \(error)")
         }
