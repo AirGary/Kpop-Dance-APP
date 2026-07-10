@@ -8,12 +8,14 @@ enum ModelContainerFactory {
 
     @MainActor
     static func make(options: AppLaunchOptions) throws -> ModelContainer {
+        let schema = Schema([DanceProject.self])
         let configuration = ModelConfiguration(
+            schema: schema,
             isStoredInMemoryOnly: options.usesInMemoryStore
         )
 
         return try ModelContainer(
-            for: DanceProject.self,
+            for: schema,
             configurations: configuration
         )
     }

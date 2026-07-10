@@ -107,6 +107,12 @@ final class DanceProject {
     var mirrorEnabled: Bool
     var defaultPlaybackRate: Double
 
+    var sourceFingerprint: String = ""
+    var remoteJobId: String?
+    var analysisSchemaVersion: Int?
+    var analysisPackageRelativePath: String?
+    var lastPracticedAt: Date?
+
     var phaseRawValue: String
 
     init(
