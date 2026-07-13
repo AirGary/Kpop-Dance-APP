@@ -35,6 +35,17 @@ class InMemoryJobRepository:
                 raise JobNotFoundError
             return record
 
+    async def delete_for_owner(self, job_id: UUID, owner_id: str) -> None:
+        async with self._lock:
+            record = self._jobs.get(job_id)
+            if record is None or record.owner_id != owner_id:
+                raise JobNotFoundError
+            del self._jobs[job_id]
+            self._idempotency.pop(
+                (record.owner_id, record.idempotency_key),
+                None,
+            )
+
     async def find_by_idempotency_key(
         self,
         owner_id: str,

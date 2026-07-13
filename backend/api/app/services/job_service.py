@@ -11,11 +11,17 @@ from api.app.ports.job_repository import (
 )
 from api.app.schemas.errors import APIError
 from api.app.schemas.jobs import CreateJobRequest, JobResponse
+from api.app.ports.object_store import ObjectStore
 
 
 class JobService:
-    def __init__(self, repository: JobRepository) -> None:
+    def __init__(
+        self,
+        repository: JobRepository,
+        object_store: ObjectStore,
+    ) -> None:
         self._repository = repository
+        self._object_store = object_store
 
     async def create_job(
         self,
@@ -53,6 +59,26 @@ class JobService:
         except JobNotFoundError as error:
             raise APIError(404, "job_not_found", "Job was not found.") from error
         return record.response
+
+    async def delete_job(self, owner_id: str, job_id: UUID) -> None:
+        try:
+            await self._repository.get_for_owner(job_id, owner_id)
+        except JobNotFoundError as error:
+            raise APIError(404, "job_not_found", "Job was not found.") from error
+
+        try:
+            await self._object_store.delete_job_objects(owner_id, job_id)
+        except OSError as error:
+            raise APIError(
+                503,
+                "storage_unavailable",
+                "Temporary storage is unavailable.",
+            ) from error
+
+        try:
+            await self._repository.delete_for_owner(job_id, owner_id)
+        except JobNotFoundError as error:
+            raise APIError(404, "job_not_found", "Job was not found.") from error
 
     @staticmethod
     def _request_hash(request: CreateJobRequest) -> str:

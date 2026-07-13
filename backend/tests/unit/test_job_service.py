@@ -6,6 +6,7 @@ from api.app.adapters.repositories.in_memory_job_repository import (
 from api.app.schemas.errors import APIError
 from api.app.schemas.jobs import CreateJobRequest
 from api.app.services.job_service import JobService
+from api.app.adapters.storage.local_object_store import LocalObjectStore
 from tests.factories import valid_job_data
 
 
@@ -14,8 +15,8 @@ def request(**overrides) -> CreateJobRequest:
 
 
 @pytest.fixture
-def service() -> JobService:
-    return JobService(InMemoryJobRepository())
+def service(tmp_path) -> JobService:
+    return JobService(InMemoryJobRepository(), LocalObjectStore(tmp_path))
 
 
 @pytest.mark.asyncio

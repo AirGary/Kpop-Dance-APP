@@ -26,6 +26,8 @@ class JobRepository(Protocol):
 
     async def get_for_owner(self, job_id: UUID, owner_id: str) -> JobRecord: ...
 
+    async def delete_for_owner(self, job_id: UUID, owner_id: str) -> None: ...
+
     async def find_by_idempotency_key(
         self,
         owner_id: str,
