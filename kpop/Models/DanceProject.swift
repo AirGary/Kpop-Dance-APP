@@ -109,6 +109,9 @@ final class DanceProject {
 
     var sourceFingerprint: String = ""
     var remoteJobId: String?
+    var remoteUploadId: String?
+    var confirmedUploadOffset: Int64?
+    var uploadExpiresAt: Date?
     var analysisSchemaVersion: Int?
     var analysisPackageRelativePath: String?
     var lastPracticedAt: Date?

@@ -17,4 +17,13 @@ struct ProjectModelTests {
 
         #expect(project.playbackRate == .normal)
     }
+
+    @Test
+    func uploadResumeMetadataDefaultsToNil() {
+        let project = DanceProject(title: "Test")
+
+        #expect(project.remoteUploadId == nil)
+        #expect(project.confirmedUploadOffset == nil)
+        #expect(project.uploadExpiresAt == nil)
+    }
 }
