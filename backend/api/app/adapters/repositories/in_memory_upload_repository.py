@@ -55,6 +55,17 @@ class InMemoryUploadRepository:
             self._sessions[upload_id] = replace(session, offset=new)
             return True
 
+    async def update_token_digest(
+        self,
+        upload_id: UUID,
+        token_digest: str,
+    ) -> UploadSession:
+        async with self._lock:
+            session = self._sessions[upload_id]
+            updated = replace(session, token_digest=token_digest)
+            self._sessions[upload_id] = updated
+            return updated
+
     async def mark_completed(
         self,
         upload_id: UUID,

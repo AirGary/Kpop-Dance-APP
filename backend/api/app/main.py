@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -15,12 +17,19 @@ def create_app(
     settings: Settings | None = None,
     container: AppContainer | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="Stage Lab API", version="0.1.0")
     resolved_settings = settings or Settings()
-    app.state.settings = resolved_settings
-    app.state.container = container or AppContainer.development(
+    resolved_container = container or AppContainer.development(
         resolved_settings.object_storage_root
     )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        await resolved_container.upload_service.cleanup_expired()
+        yield
+
+    app = FastAPI(title="Stage Lab API", version="0.1.0", lifespan=lifespan)
+    app.state.settings = resolved_settings
+    app.state.container = resolved_container
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health_router)
     app.include_router(identity_router)

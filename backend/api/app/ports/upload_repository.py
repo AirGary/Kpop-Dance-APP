@@ -41,6 +41,12 @@ class UploadRepository(Protocol):
         new: int,
     ) -> bool: ...
 
+    async def update_token_digest(
+        self,
+        upload_id: UUID,
+        token_digest: str,
+    ) -> UploadSession: ...
+
     async def mark_completed(
         self,
         upload_id: UUID,
