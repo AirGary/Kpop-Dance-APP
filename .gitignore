@@ -10,3 +10,10 @@ xcuserdata/
 .trae/
 .superpowers/
 .worktrees/
+
+# Python
+backend/.venv/
+**/__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/

@@ -1,0 +1,63 @@
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from api.app.config import Settings
+from api.app.middleware.request_context import RequestContextMiddleware
+from api.app.routes.health import router as health_router
+from api.app.schemas.errors import APIError, error_response
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    app = FastAPI(title="Stage Lab API", version="0.1.0")
+    app.state.settings = settings or Settings()
+    app.add_middleware(RequestContextMiddleware)
+    app.include_router(health_router)
+
+    @app.exception_handler(APIError)
+    async def handle_api_error(request: Request, error: APIError):
+        return error_response(
+            request,
+            status_code=error.status_code,
+            code=error.code,
+            message=error.message,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def handle_validation_error(request: Request, _: RequestValidationError):
+        return error_response(
+            request,
+            status_code=422,
+            code="validation_error",
+            message="Request validation failed.",
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def handle_http_error(request: Request, error: StarletteHTTPException):
+        if error.status_code == 404:
+            return error_response(
+                request,
+                status_code=404,
+                code="not_found",
+                message="Resource was not found.",
+            )
+        return error_response(
+            request,
+            status_code=error.status_code,
+            code="http_error",
+            message="Request failed.",
+        )
+
+    @app.exception_handler(Exception)
+    async def handle_internal_error(request: Request, _: Exception):
+        return error_response(
+            request,
+            status_code=500,
+            code="internal_error",
+            message="An internal error occurred.",
+        )
+
+    return app
+
+
+app = create_app()
