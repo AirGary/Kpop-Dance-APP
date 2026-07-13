@@ -10,6 +10,7 @@ from api.app.middleware.request_context import RequestContextMiddleware
 from api.app.routes.health import router as health_router
 from api.app.routes.identity import router as identity_router
 from api.app.routes.jobs import router as jobs_router
+from api.app.routes.uploads import router as uploads_router
 from api.app.schemas.errors import APIError, error_response
 
 
@@ -34,6 +35,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(identity_router)
     app.include_router(jobs_router)
+    app.include_router(uploads_router)
 
     @app.exception_handler(APIError)
     async def handle_api_error(request: Request, error: APIError):

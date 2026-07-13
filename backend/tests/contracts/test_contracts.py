@@ -4,6 +4,7 @@ from pathlib import Path
 from api.app.schemas.errors import ErrorEnvelope
 from api.app.schemas.identity import IdentityResponse
 from api.app.schemas.jobs import JobResponse
+from api.app.schemas.uploads import UploadSessionResponse
 
 
 FIXTURES = Path(__file__).parents[2] / "contracts" / "fixtures"
@@ -26,3 +27,7 @@ def test_job_fixture_round_trips():
 
 def test_error_fixture_round_trips():
     assert_fixture_round_trips("error.json", ErrorEnvelope)
+
+
+def test_upload_session_fixture_round_trips():
+    assert_fixture_round_trips("upload-session.json", UploadSessionResponse)
