@@ -30,6 +30,7 @@ def error_response(
     code: str,
     message: str,
 ) -> JSONResponse:
+    request.state.error_code = code
     payload = {
         "error": {
             "code": code,
