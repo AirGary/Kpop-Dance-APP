@@ -7,6 +7,7 @@ from api.app.container import AppContainer
 from api.app.middleware.request_context import RequestContextMiddleware
 from api.app.routes.health import router as health_router
 from api.app.routes.identity import router as identity_router
+from api.app.routes.jobs import router as jobs_router
 from api.app.schemas.errors import APIError, error_response
 
 
@@ -15,11 +16,15 @@ def create_app(
     container: AppContainer | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Stage Lab API", version="0.1.0")
-    app.state.settings = settings or Settings()
-    app.state.container = container or AppContainer.development()
+    resolved_settings = settings or Settings()
+    app.state.settings = resolved_settings
+    app.state.container = container or AppContainer.development(
+        resolved_settings.object_storage_root
+    )
     app.add_middleware(RequestContextMiddleware)
     app.include_router(health_router)
     app.include_router(identity_router)
+    app.include_router(jobs_router)
 
     @app.exception_handler(APIError)
     async def handle_api_error(request: Request, error: APIError):

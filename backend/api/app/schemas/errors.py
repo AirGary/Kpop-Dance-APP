@@ -1,5 +1,5 @@
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.requests import Request
 
 
@@ -8,7 +8,7 @@ class ErrorDetail(BaseModel):
 
     code: str
     message: str
-    request_id: str
+    request_id: str = Field(alias="requestId")
 
 
 class ErrorEnvelope(BaseModel):
