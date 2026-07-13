@@ -6,4 +6,10 @@ nonisolated struct HTTPTransport: Sendable {
     static let live = HTTPTransport { request in
         try await URLSession.shared.data(for: request)
     }
+
+    static func urlSession(_ session: URLSession) -> HTTPTransport {
+        HTTPTransport { request in
+            try await session.data(for: request)
+        }
+    }
 }
