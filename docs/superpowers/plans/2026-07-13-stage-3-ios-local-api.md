@@ -226,7 +226,7 @@ Run focused configuration tests. Expected: FAIL because the build setting and en
 
 - [ ] **Step 3: Wire development configuration and UI**
 
-Add generated Info.plist key `STAGE_LAB_API_BASE_URL`. Set only Debug `STAGE_LAB_API_BASE_URL = "http://127.0.0.1:8000"`; set Staging and Release to an empty value. Build an optional client once in `kpopApp`, inject it through a custom SwiftUI environment key, and leave previews/tests safe when absent.
+Use `#if DEBUG` to build the `http://127.0.0.1:8000` client only in Debug; Staging and Release inject `nil`. Build the optional client once in `kpopApp`, inject it through a custom SwiftUI environment key, and leave previews/tests safe when absent.
 
 Add an analysis card with:
 

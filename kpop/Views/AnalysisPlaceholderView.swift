@@ -2,6 +2,8 @@ import SwiftUI
 
 struct AnalysisView: View {
     @EnvironmentObject private var router: AppRouter
+    @Environment(\.jobsAPIClient) private var jobsAPIClient
+    @State private var connectionModel = AnalysisConnectionModel()
     let project: DanceProject
 
     var body: some View {
@@ -35,6 +37,8 @@ struct AnalysisView: View {
                 }
                 .padding(AppUI.panelPadding)
                 .cardBackground()
+
+                localBackendCard
 
                 VStack(alignment: .leading, spacing: 12) {
                     StageSectionHeader(
@@ -86,6 +90,64 @@ struct AnalysisView: View {
         .background(AppUI.background)
         .navigationTitle("分析")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var localBackendCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            StageSectionHeader(
+                eyebrow: "Local API",
+                title: "云分析任务连接",
+                detail: "当前只发送视频元数据，不会上传视频。真实 AI 分析将在后续阶段接入。"
+            )
+
+            switch connectionModel.state {
+            case .idle:
+                connectionButton(title: "创建云分析任务")
+            case .loading:
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("正在连接本地后端…")
+                        .font(.subheadline.weight(.semibold))
+                }
+            case .connected(let job):
+                HStack {
+                    StatusBadge(text: job.state.rawValue, systemImage: "checkmark.icloud", color: .green)
+                    Spacer()
+                    Text(String(job.id.uuidString.prefix(8)))
+                        .font(.caption.monospaced().weight(.semibold))
+                        .foregroundStyle(AppUI.inkSoft)
+                }
+                ProgressView(value: job.progress)
+                    .tint(.green)
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.red)
+                connectionButton(title: "重新连接")
+            }
+
+            if jobsAPIClient == nil {
+                Text("本地 API 仅在 Debug 模拟器版本启用。")
+                    .font(.caption)
+                    .foregroundStyle(AppUI.inkSoft)
+            }
+        }
+        .padding(AppUI.panelPadding)
+        .cardBackground()
+    }
+
+    private func connectionButton(title: String) -> some View {
+        Button {
+            guard let jobsAPIClient else { return }
+            Task {
+                await connectionModel.connect(project: project, client: jobsAPIClient)
+            }
+        } label: {
+            Label(title, systemImage: "cloud.fill")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(jobsAPIClient == nil)
     }
 
     private var progress: Double {

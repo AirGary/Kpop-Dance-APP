@@ -11,6 +11,7 @@ import SwiftData
 @main
 struct kpopApp: App {
     private let modelContainer: ModelContainer
+    private let jobsAPIClient: JobsAPIClient?
 
     init() {
         do {
@@ -18,11 +19,22 @@ struct kpopApp: App {
         } catch {
             fatalError("Failed to create SwiftData container: \(error)")
         }
+        #if DEBUG
+        jobsAPIClient = JobsAPIClient(
+            configuration: JobsAPIConfiguration(
+                baseURL: URL(string: "http://127.0.0.1:8000")!,
+                bearerToken: "dev-user-a"
+            )
+        )
+        #else
+        jobsAPIClient = nil
+        #endif
     }
 
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environment(\.jobsAPIClient, jobsAPIClient)
         }
         .modelContainer(modelContainer)
     }

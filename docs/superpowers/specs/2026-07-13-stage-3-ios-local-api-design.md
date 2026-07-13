@@ -43,10 +43,10 @@ job and does not yet perform analysis.
 
 ## Environment
 
-The Debug app configuration receives `STAGE_LAB_API_BASE_URL` through the
-generated Info.plist and uses `http://127.0.0.1:8000`. Staging and Release do
-not contain a localhost API URL. The client is injected from the app root so
-tests and previews never contact a real server.
+The Debug app uses a compile-time guarded `http://127.0.0.1:8000` client.
+Staging and Release compile that client out and inject no network client. The
+client is injected from the app root so tests and previews never contact a real
+server.
 
 The Stage 3 development token is `dev-user-a`. It is a local-only fixture and
 must never be treated as production authentication.

@@ -67,3 +67,11 @@ From the repository root:
 This installs local development dependencies, runs all backend tests, checks the
 app import, and checks Terraform formatting only when Terraform is already
 installed. It never runs `terraform apply` and never creates cloud resources.
+
+## iOS Simulator Connection
+
+Keep Uvicorn running on `127.0.0.1:8000`, then run the `kpop` Debug scheme on
+the iPhone 17 Simulator. Import an MP4 or MOV shorter than six minutes, open its
+analysis page, and tap `创建云分析任务`. A successful card shows the draft state
+and the first eight characters of the server job ID. This Stage 3 flow sends
+metadata only; video bytes remain on the simulator.
