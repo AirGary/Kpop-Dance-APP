@@ -99,6 +99,26 @@ curl -i -H 'Authorization: Bearer dev-user-a' \
 The health response reports `cloud-bootstrap`; the protected route returns
 `401`. Stop the foreground container with `Control-C`.
 
+## Guarded Stage 5A Deployment
+
+The repository includes a sequential deployment helper. It never links billing,
+changes budgets, invokes Cloud Build, or enables Firebase. Run each command only
+after the previous result has been reviewed:
+
+```bash
+./scripts/cloud-bootstrap.sh foundation
+image_uri="$(./scripts/cloud-bootstrap.sh image)"
+./scripts/cloud-bootstrap.sh plan "$image_uri"
+terraform -chdir=infra/terraform/environments/dev show stage5a.tfplan
+./scripts/cloud-bootstrap.sh apply
+./scripts/cloud-bootstrap.sh smoke
+```
+
+`foundation` creates only the required service enablement and Artifact Registry
+repository. `plan` saves the complete Cloud Run proposal for inspection. `apply`
+accepts only that saved plan, and `smoke` verifies the public health endpoint and
+that a development Bearer token is rejected.
+
 ## iOS Simulator Connection
 
 Keep Uvicorn running on `127.0.0.1:8000`, then run the `kpop` Debug scheme on
