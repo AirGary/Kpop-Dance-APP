@@ -38,6 +38,24 @@ struct ManagedFileStoreTests {
     }
 
     @Test
+    func pickedVideoCopiesProviderFileBeforeItExpires() throws {
+        let fixture = try TemporaryFileFixture()
+        defer { fixture.remove() }
+        let sourceURL = fixture.root.appendingPathComponent("provider-video.mp4")
+        let sourceData = Data("provider-video-data".utf8)
+        try sourceData.write(to: sourceURL)
+
+        let pickedVideo = try PickedVideo.makeTemporaryCopy(
+            from: sourceURL,
+            temporaryDirectory: fixture.root.appendingPathComponent("Transfers", isDirectory: true)
+        )
+
+        #expect(pickedVideo.displayName == "provider-video")
+        #expect(pickedVideo.fileURL.pathExtension == "mp4")
+        #expect(try Data(contentsOf: pickedVideo.fileURL) == sourceData)
+    }
+
+    @Test
     func packageStoreSavesHashLoadsReplacesAndDeletesData() throws {
         let fixture = try TemporaryFileFixture()
         defer { fixture.remove() }

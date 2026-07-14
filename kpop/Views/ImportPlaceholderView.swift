@@ -156,11 +156,15 @@ struct ImportView: View {
         importedVideo = nil
 
         do {
-            guard let sourceURL = try await item.loadTransferable(type: URL.self) else {
+            guard let pickedVideo = try await item.loadTransferable(type: PickedVideo.self) else {
                 throw ImportError.unreadableSelection
             }
+            defer { try? FileManager.default.removeItem(at: pickedVideo.fileURL) }
 
-            let imported = try await importedVideoStore.copyVideo(from: sourceURL)
+            let imported = try await importedVideoStore.copyVideo(
+                from: pickedVideo.fileURL,
+                displayName: pickedVideo.displayName
+            )
             guard isActiveImportRequest(requestID) else { return }
             importedVideo = imported
             sourceVideoName = imported.displayName
