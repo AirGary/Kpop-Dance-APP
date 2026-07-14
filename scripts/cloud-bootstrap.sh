@@ -12,6 +12,7 @@ readonly image_name="api"
 readonly registry_host="$region-docker.pkg.dev"
 readonly image_base="$registry_host/$project_id/$repository/$image_name"
 readonly bootstrap_digest="sha256:0000000000000000000000000000000000000000000000000000000000000000"
+readonly system_git="/usr/bin/git"
 
 usage() {
   printf '%s\n' "Usage: $0 {foundation|image|plan IMAGE_DIGEST_URI|apply|smoke}" >&2
@@ -43,11 +44,15 @@ foundation() {
 }
 
 build_image() {
-  require_tools docker gcloud git
+  require_tools docker gcloud
+  if [[ ! -x "$system_git" ]]; then
+    printf 'Required command is unavailable: %s\n' "$system_git" >&2
+    exit 1
+  fi
   gcloud auth configure-docker "$registry_host" --quiet >&2
 
   local git_sha image_tag digest
-  git_sha="$(git -C "$repository_root" rev-parse --short=12 HEAD)"
+  git_sha="$("$system_git" -C "$repository_root" rev-parse --short=12 HEAD)"
   image_tag="$image_base:$git_sha"
   docker buildx build \
     --platform linux/amd64 \

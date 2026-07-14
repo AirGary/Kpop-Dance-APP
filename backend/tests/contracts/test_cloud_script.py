@@ -10,6 +10,7 @@ def test_cloud_script_has_guarded_commands():
     assert "stage-lab-dev-gary-202607" in source
     assert "asia-southeast1" in source
     assert "--platform linux/amd64" in source
+    assert 'readonly system_git="/usr/bin/git"' in source
     assert "image_summary.digest" in source
     assert "stage5a.tfplan" in source
     assert "/healthz" in source
