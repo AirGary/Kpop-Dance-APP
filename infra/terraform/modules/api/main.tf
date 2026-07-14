@@ -1,9 +1,20 @@
 resource "google_artifact_registry_repository" "api" {
-  project       = var.project_id
-  location      = var.region
-  repository_id = "stage-lab-api"
-  format        = "DOCKER"
-  description   = "Stage Lab API container images"
+  project                = var.project_id
+  location               = var.region
+  repository_id          = "stage-lab-api"
+  format                 = "DOCKER"
+  description            = "Stage Lab API container images"
+  cleanup_policy_dry_run = false
+
+  cleanup_policies {
+    id     = "delete-untagged-after-seven-days"
+    action = "DELETE"
+
+    condition {
+      tag_state  = "UNTAGGED"
+      older_than = "604800s"
+    }
+  }
 }
 
 resource "google_service_account" "api" {
@@ -21,7 +32,9 @@ resource "google_cloud_run_v2_service" "api" {
   ingress             = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = google_service_account.api.email
+    service_account                  = google_service_account.api.email
+    timeout                          = "30s"
+    max_instance_request_concurrency = 20
 
     scaling {
       min_instance_count = 0
@@ -31,12 +44,38 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = var.container_image
 
+      env {
+        name  = "APP_ENVIRONMENT"
+        value = "cloud-bootstrap"
+      }
+
       resources {
+        cpu_idle          = true
+        startup_cpu_boost = false
         limits = {
           cpu    = "1"
           memory = "512Mi"
         }
       }
+
+      startup_probe {
+        initial_delay_seconds = 0
+        timeout_seconds       = 2
+        period_seconds        = 3
+        failure_threshold     = 10
+
+        http_get {
+          path = "/healthz"
+        }
+      }
     }
   }
+}
+
+resource "google_cloud_run_service_iam_member" "public" {
+  project  = var.project_id
+  location = google_cloud_run_v2_service.api.location
+  service  = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
 }

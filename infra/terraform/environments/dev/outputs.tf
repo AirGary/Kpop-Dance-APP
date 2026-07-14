@@ -1,5 +1,5 @@
 output "api_url" {
-  description = "Cloud Run URL after a future deployment."
+  description = "Public Cloud Run API URL."
   value       = module.api.service_url
 }
 
@@ -8,7 +8,7 @@ output "artifact_repository_id" {
   value       = module.api.repository_id
 }
 
-output "configured_budget_thresholds_usd" {
-  description = "Threshold values reserved for the future billing-budget stage."
-  value       = var.billing_budget_thresholds_usd
+output "runtime_service_account" {
+  description = "Dedicated Cloud Run runtime service account."
+  value       = module.api.runtime_service_account
 }

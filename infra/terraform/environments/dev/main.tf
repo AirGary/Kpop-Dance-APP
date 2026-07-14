@@ -14,26 +14,28 @@ provider "google" {
   region  = var.region
 }
 
+locals {
+  required_services = toset([
+    "artifactregistry.googleapis.com",
+    "iam.googleapis.com",
+    "run.googleapis.com",
+  ])
+}
+
+resource "google_project_service" "required" {
+  for_each = local.required_services
+
+  project            = var.project_id
+  service            = each.value
+  disable_on_destroy = false
+}
+
 module "api" {
   source = "../../modules/api"
 
   project_id      = var.project_id
   region          = var.region
   container_image = var.container_image
-}
 
-module "data" {
-  source = "../../modules/data"
-
-  project_id = var.project_id
-  location   = var.location
-}
-
-module "storage" {
-  source = "../../modules/storage"
-
-  project_id         = var.project_id
-  location           = var.location
-  source_bucket_name = var.source_bucket_name
-  result_bucket_name = var.result_bucket_name
+  depends_on = [google_project_service.required]
 }

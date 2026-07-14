@@ -9,6 +9,6 @@ variable "region" {
 }
 
 variable "container_image" {
-  description = "Immutable container image URI to deploy after Stage 2."
+  description = "Immutable API image URI including its sha256 digest."
   type        = string
 }

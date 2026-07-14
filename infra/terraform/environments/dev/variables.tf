@@ -9,29 +9,12 @@ variable "region" {
   default     = "asia-southeast1"
 }
 
-variable "location" {
-  description = "Singapore-compatible location used by data resources."
-  type        = string
-  default     = "asia-southeast1"
-}
-
 variable "container_image" {
-  description = "Immutable API image URI supplied only during a future deployment."
+  description = "Immutable Artifact Registry API image URI including its sha256 digest."
   type        = string
-}
 
-variable "source_bucket_name" {
-  description = "Globally unique temporary source-video bucket name."
-  type        = string
-}
-
-variable "result_bucket_name" {
-  description = "Globally unique temporary result bucket name."
-  type        = string
-}
-
-variable "billing_budget_thresholds_usd" {
-  description = "Future billing alert thresholds; Stage 2 creates no budget or resources."
-  type        = list(number)
-  default     = [20, 35, 50]
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.container_image))
+    error_message = "container_image must use an immutable sha256 digest."
+  }
 }
