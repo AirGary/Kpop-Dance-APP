@@ -101,9 +101,20 @@ final class DanceProject {
 
     var title: String
     var sourceVideoName: String
+    var sourceVideoPath: String?
+    var videoDuration: Double = 0
     var selectedDancerName: String?
     var mirrorEnabled: Bool
     var defaultPlaybackRate: Double
+
+    var sourceFingerprint: String = ""
+    var remoteJobId: String?
+    var remoteUploadId: String?
+    var confirmedUploadOffset: Int64?
+    var uploadExpiresAt: Date?
+    var analysisSchemaVersion: Int?
+    var analysisPackageRelativePath: String?
+    var lastPracticedAt: Date?
 
     var phaseRawValue: String
 
@@ -113,6 +124,8 @@ final class DanceProject {
         updatedAt: Date = Date(),
         title: String,
         sourceVideoName: String = "本地视频",
+        sourceVideoPath: String? = nil,
+        videoDuration: Double = 0,
         selectedDancerName: String? = nil,
         mirrorEnabled: Bool = false,
         defaultPlaybackRate: Double = 1.0,
@@ -123,6 +136,8 @@ final class DanceProject {
         self.updatedAt = updatedAt
         self.title = title
         self.sourceVideoName = sourceVideoName
+        self.sourceVideoPath = sourceVideoPath
+        self.videoDuration = videoDuration
         self.selectedDancerName = selectedDancerName
         self.mirrorEnabled = mirrorEnabled
         self.defaultPlaybackRate = defaultPlaybackRate

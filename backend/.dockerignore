@@ -1,0 +1,8 @@
+.venv
+tests
+**/__pycache__
+.pytest_cache
+.git
+stage-lab-objects
+*.pyc
+*.egg-info

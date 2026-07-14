@@ -1,0 +1,7 @@
+{
+  "uploadId": "d987817a-ca47-4f19-9c17-2b8717f518a8",
+  "uploadUrl": "http://127.0.0.1:8000/v1/uploads/d987817a-ca47-4f19-9c17-2b8717f518a8/content?token=opaque",
+  "expiresAt": "2026-07-14T12:00:00Z",
+  "chunkSize": 5242880,
+  "offset": 0
+}

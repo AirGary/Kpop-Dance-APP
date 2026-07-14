@@ -6,8 +6,27 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		A1000000000000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 677F70082FC56BAF00BE0749 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 677F700F2FC56BAF00BE0749;
+			remoteInfo = kpop;
+		};
+		A1000000000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 677F70082FC56BAF00BE0749 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 677F700F2FC56BAF00BE0749;
+			remoteInfo = kpop;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		677F70102FC56BAF00BE0749 /* kpop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = kpop.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000001 /* kpopTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kpopTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000002 /* kpopUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = kpopUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +35,34 @@
 			path = kpop;
 			sourceTree = "<group>";
 		};
+		A10000000000000000000003 /* kpopTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = kpopTests;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000004 /* kpopUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = kpopUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		677F700D2FC56BAF00BE0749 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000006 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +76,8 @@
 			isa = PBXGroup;
 			children = (
 				677F70122FC56BAF00BE0749 /* kpop */,
+				A10000000000000000000003 /* kpopTests */,
+				A10000000000000000000004 /* kpopUITests */,
 				677F70112FC56BAF00BE0749 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +86,8 @@
 			isa = PBXGroup;
 			children = (
 				677F70102FC56BAF00BE0749 /* kpop.app */,
+				A10000000000000000000001 /* kpopTests.xctest */,
+				A10000000000000000000002 /* kpopUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +117,52 @@
 			productReference = 677F70102FC56BAF00BE0749 /* kpop.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1000000000000000000000F /* kpopTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000013 /* Build configuration list for PBXNativeTarget "kpopTests" */;
+			buildPhases = (
+				A10000000000000000000009 /* Sources */,
+				A10000000000000000000005 /* Frameworks */,
+				A10000000000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1000000000000000000000D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000003 /* kpopTests */,
+			);
+			name = kpopTests;
+			packageProductDependencies = (
+			);
+			productName = kpopTests;
+			productReference = A10000000000000000000001 /* kpopTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A10000000000000000000010 /* kpopUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000016 /* Build configuration list for PBXNativeTarget "kpopUITests" */;
+			buildPhases = (
+				A1000000000000000000000A /* Sources */,
+				A10000000000000000000006 /* Frameworks */,
+				A10000000000000000000008 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1000000000000000000000E /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000004 /* kpopUITests */,
+			);
+			name = kpopUITests;
+			packageProductDependencies = (
+			);
+			productName = kpopUITests;
+			productReference = A10000000000000000000002 /* kpopUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +175,14 @@
 				TargetAttributes = {
 					677F700F2FC56BAF00BE0749 = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					A1000000000000000000000F = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 677F700F2FC56BAF00BE0749;
+					};
+					A10000000000000000000010 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 677F700F2FC56BAF00BE0749;
 					};
 				};
 			};
@@ -100,12 +201,28 @@
 			projectRoot = "";
 			targets = (
 				677F700F2FC56BAF00BE0749 /* kpop */,
+				A1000000000000000000000F /* kpopTests */,
+				A10000000000000000000010 /* kpopUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		677F700E2FC56BAF00BE0749 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000000000000000000008 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +239,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000000000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1000000000000000000000A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1000000000000000000000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 677F700F2FC56BAF00BE0749 /* kpop */;
+			targetProxy = A1000000000000000000000B /* PBXContainerItemProxy */;
+		};
+		A1000000000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 677F700F2FC56BAF00BE0749 /* kpop */;
+			targetProxy = A1000000000000000000000C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		677F70192FC56BB000BE0749 /* Debug */ = {
@@ -239,6 +383,59 @@
 			};
 			name = Release;
 		};
+		A10000000000000000000017 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Staging;
+		};
 		677F701C2FC56BB000BE0749 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -250,6 +447,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_STAGE_LAB_ENVIRONMENT = "$(STAGE_LAB_ENVIRONMENT)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -263,7 +461,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpop;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpop.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = iphoneos;
@@ -274,6 +472,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				STAGE_LAB_ENVIRONMENT = development;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -289,6 +488,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_STAGE_LAB_ENVIRONMENT = "$(STAGE_LAB_ENVIRONMENT)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -313,9 +513,144 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				STAGE_LAB_ENVIRONMENT = production;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		A10000000000000000000018 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_STAGE_LAB_ENVIRONMENT = "$(STAGE_LAB_ENVIRONMENT)";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpop.staging;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				STAGE_LAB_ENVIRONMENT = staging;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Staging;
+		};
+		A10000000000000000000011 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpopTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/kpop.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/kpop";
+			};
+			name = Debug;
+		};
+		A10000000000000000000012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpopTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/kpop.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/kpop";
+			};
+			name = Release;
+		};
+		A10000000000000000000019 /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpopTests.staging;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/kpop.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/kpop";
+			};
+			name = Staging;
+		};
+		A10000000000000000000014 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpopUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = kpop;
+			};
+			name = Debug;
+		};
+		A10000000000000000000015 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpopUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = kpop;
+			};
+			name = Release;
+		};
+		A1000000000000000000001A /* Staging */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fausyusgarygary.kpopUITests.staging;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = kpop;
+			};
+			name = Staging;
 		};
 /* End XCBuildConfiguration section */
 
@@ -324,6 +659,7 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				677F70192FC56BB000BE0749 /* Debug */,
+				A10000000000000000000017 /* Staging */,
 				677F701A2FC56BB000BE0749 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -333,7 +669,28 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				677F701C2FC56BB000BE0749 /* Debug */,
+				A10000000000000000000018 /* Staging */,
 				677F701D2FC56BB000BE0749 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000013 /* Build configuration list for PBXNativeTarget "kpopTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000011 /* Debug */,
+				A10000000000000000000019 /* Staging */,
+				A10000000000000000000012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000016 /* Build configuration list for PBXNativeTarget "kpopUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000014 /* Debug */,
+				A1000000000000000000001A /* Staging */,
+				A10000000000000000000015 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
