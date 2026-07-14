@@ -36,8 +36,14 @@ def test_unknown_environment_fails_closed(tmp_path):
 def test_settings_reads_cloud_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_ENVIRONMENT", "cloud-bootstrap")
     monkeypatch.setenv("OBJECT_STORAGE_ROOT", str(tmp_path))
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "stage-lab-project")
+    monkeypatch.setenv("SOURCE_BUCKET_NAME", "stage-lab-source")
+    monkeypatch.setenv("RESULT_BUCKET_NAME", "stage-lab-result")
 
     settings = Settings.from_environment()
 
     assert settings.environment == "cloud-bootstrap"
     assert settings.object_storage_root == tmp_path
+    assert settings.google_cloud_project == "stage-lab-project"
+    assert settings.source_bucket_name == "stage-lab-source"
+    assert settings.result_bucket_name == "stage-lab-result"
