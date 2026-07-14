@@ -12,3 +12,18 @@ output "runtime_service_account" {
   description = "Dedicated Cloud Run runtime service account."
   value       = module.api.runtime_service_account
 }
+
+output "source_bucket_name" {
+  description = "Private temporary source-video bucket."
+  value       = module.storage.source_bucket_name
+}
+
+output "result_bucket_name" {
+  description = "Private temporary analysis-result bucket."
+  value       = module.storage.result_bucket_name
+}
+
+output "firestore_database_name" {
+  description = "Firestore database used for cloud metadata."
+  value       = module.data.firestore_database_name
+}

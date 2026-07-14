@@ -10,7 +10,7 @@ def terraform_source(*paths: str) -> str:
     return "\n".join((TERRAFORM_ROOT / path).read_text() for path in paths)
 
 
-def test_stage_5a_environment_enables_only_bootstrap_modules():
+def test_stage_5b_environment_enables_private_data_modules():
     source = terraform_source(
         "environments/dev/main.tf",
         "environments/dev/variables.tf",
@@ -18,12 +18,44 @@ def test_stage_5a_environment_enables_only_bootstrap_modules():
     )
 
     assert '"artifactregistry.googleapis.com"' in source
+    assert '"firestore.googleapis.com"' in source
     assert '"iam.googleapis.com"' in source
     assert '"run.googleapis.com"' in source
-    assert 'source = "../../modules/data"' not in source
-    assert 'source = "../../modules/storage"' not in source
-    assert "source_bucket_name" not in source
-    assert "result_bucket_name" not in source
+    assert '"storage.googleapis.com"' in source
+    assert 'source = "../../modules/data"' in source
+    assert 'source = "../../modules/storage"' in source
+    assert "source_bucket_name" in source
+    assert "result_bucket_name" in source
+
+
+def test_storage_is_private_and_expires_temporary_objects():
+    source = terraform_source(
+        "modules/storage/main.tf",
+        "modules/storage/variables.tf",
+    )
+
+    assert source.count("uniform_bucket_level_access = true") == 2
+    assert source.count('public_access_prevention    = "enforced"') == 2
+    assert "force_destroy               = false" in source
+    assert "age = 1" in source
+    assert "age = 7" in source
+    assert "roles/storage.objectUser" in source
+    assert "allUsers" not in source
+    assert "allAuthenticatedUsers" not in source
+
+
+def test_firestore_is_native_and_api_access_is_least_privilege():
+    source = terraform_source(
+        "modules/data/main.tf",
+        "modules/data/variables.tf",
+    )
+
+    assert 'type                        = "FIRESTORE_NATIVE"' in source
+    assert 'deletion_policy             = "ABANDON"' in source
+    assert 'resource "google_firebase_project" "default"' in source
+    assert "roles/datastore.user" in source
+    assert "roles/editor" not in source
+    assert "roles/owner" not in source
 
 
 def test_cloud_run_is_public_scale_to_zero_and_bounded():
@@ -38,7 +70,7 @@ def test_cloud_run_is_public_scale_to_zero_and_bounded():
     assert 'cpu    = "1"' in source
     assert 'memory = "512Mi"' in source
     assert 'name  = "APP_ENVIRONMENT"' in source
-    assert 'value = "cloud-bootstrap"' in source
+    assert 'value = "cloud"' in source
     assert 'path = "/health"' in source
     assert "/healthz" not in source
     assert 'resource "google_cloud_run_service_iam_member" "public"' in source
@@ -56,13 +88,17 @@ def test_artifact_registry_deletes_old_untagged_images():
     assert 'older_than = "604800s"' in source
 
 
-def test_stage_5a_uses_one_narrow_runtime_service_account():
+def test_stage_5b_uses_one_narrow_runtime_service_account_and_no_gpu():
     source = terraform_source(
         "environments/dev/main.tf",
         "modules/api/main.tf",
     )
 
     assert source.count('account_id   = "stage-lab-api"') == 1
+    assert 'value = "cloud"' in source
+    assert 'name  = "SOURCE_BUCKET_NAME"' in source
+    assert 'name  = "RESULT_BUCKET_NAME"' in source
+    assert 'name  = "GOOGLE_CLOUD_PROJECT"' in source
     assert "roles/editor" not in source
     assert "roles/owner" not in source
     assert "gpu" not in source.lower()

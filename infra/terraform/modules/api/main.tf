@@ -46,7 +46,22 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "APP_ENVIRONMENT"
-        value = "cloud-bootstrap"
+        value = "cloud"
+      }
+
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+
+      env {
+        name  = "SOURCE_BUCKET_NAME"
+        value = var.source_bucket
+      }
+
+      env {
+        name  = "RESULT_BUCKET_NAME"
+        value = var.result_bucket
       }
 
       resources {
