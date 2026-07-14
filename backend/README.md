@@ -4,6 +4,11 @@ This directory contains the Stage 4 development API. It is intentionally local:
 it accepts resumable video uploads but does not contact Google Cloud, run AI
 analysis, or persist metadata after the Python process stops.
 
+Stage 5A adds a production container and a fail-closed `cloud-bootstrap` mode.
+That mode exposes `/healthz` for deployment checks but rejects development
+Bearer identities. It does not make the local upload implementation a cloud
+storage service.
+
 ## What Goes In And Out
 
 - Input: development Bearer identity, validated MP4 metadata, and ordered 5 MiB
@@ -70,6 +75,29 @@ From the repository root:
 This installs local development dependencies, runs all backend tests, checks the
 app import, and checks Terraform formatting only when Terraform is already
 installed. It never runs `terraform apply` and never creates cloud resources.
+
+## Local Production Container Check
+
+Build the same Linux architecture used by Cloud Run:
+
+```bash
+cd backend
+docker build --platform linux/amd64 -t stage-lab-api:stage5a .
+docker run --rm -p 18080:8080 \
+  -e APP_ENVIRONMENT=cloud-bootstrap \
+  stage-lab-api:stage5a
+```
+
+From another terminal, verify the public health route and fail-closed identity:
+
+```bash
+curl http://127.0.0.1:18080/healthz
+curl -i -H 'Authorization: Bearer dev-user-a' \
+  http://127.0.0.1:18080/v1/me
+```
+
+The health response reports `cloud-bootstrap`; the protected route returns
+`401`. Stop the foreground container with `Control-C`.
 
 ## iOS Simulator Connection
 
