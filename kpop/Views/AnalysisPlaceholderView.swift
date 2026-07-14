@@ -3,7 +3,10 @@ import SwiftUI
 struct AnalysisView: View {
     @EnvironmentObject private var router: AppRouter
     @Environment(\.jobsAPIClient) private var jobsAPIClient
+    @Environment(\.uploadRunner) private var uploadRunner
     @State private var connectionModel = AnalysisConnectionModel()
+    @State private var uploadModel = UploadConnectionModel()
+    @State private var showsCellularConfirmation = false
     let project: DanceProject
 
     var body: some View {
@@ -37,6 +40,8 @@ struct AnalysisView: View {
                 }
                 .padding(AppUI.panelPadding)
                 .cardBackground()
+
+                uploadCard
 
                 localBackendCard
 
@@ -90,14 +95,145 @@ struct AnalysisView: View {
         .background(AppUI.background)
         .navigationTitle("分析")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "本次允许使用蜂窝网络？",
+            isPresented: $showsCellularConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("允许并继续上传") {
+                startUpload(allowsCellular: true)
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("视频上传可能消耗较多流量。本次确认不会保存为全局设置。")
+        }
+    }
+
+    private var uploadCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            StageSectionHeader(
+                eyebrow: "Video Upload",
+                title: "准备云端分析素材",
+                detail: "生成最高 1080p 的 H.264 MP4 副本并断点续传。原始视频不会被修改。"
+            )
+
+            uploadStatus
+
+            if !isUploadBusy {
+                Button {
+                    startUpload(allowsCellular: false)
+                } label: {
+                    Label(primaryUploadTitle, systemImage: "arrow.up.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(uploadRunner == nil || project.sourceVideoPath == nil)
+
+                Button {
+                    showsCellularConfirmation = true
+                } label: {
+                    Label("本次允许使用蜂窝网络", systemImage: "antenna.radiowaves.left.and.right")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(uploadRunner == nil || project.sourceVideoPath == nil)
+            }
+
+            if uploadRunner == nil {
+                Text("视频上传仅在 Debug 模拟器版本启用。")
+                    .font(.caption)
+                    .foregroundStyle(AppUI.inkSoft)
+            }
+        }
+        .padding(AppUI.panelPadding)
+        .cardBackground()
+    }
+
+    @ViewBuilder
+    private var uploadStatus: some View {
+        switch uploadModel.state {
+        case .ready:
+            Label("视频将在本机压缩后上传", systemImage: "film.stack")
+                .foregroundStyle(AppUI.inkSoft)
+        case .compressing:
+            uploadActivity(title: "正在生成 1080p 压缩副本", detail: "只处理受管副本，原视频保持不变。")
+        case .hashing:
+            uploadActivity(title: "正在校验压缩副本", detail: "计算 SHA-256，确保服务端收到完整文件。")
+        case .uploading(let progress):
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("正在断点续传")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("\(Int(progress * 100))%")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(AppUI.violet)
+                }
+                ProgressView(value: progress)
+                    .tint(AppUI.violet)
+            }
+        case .validating:
+            uploadActivity(title: "服务端正在验证视频", detail: "核对文件大小与 SHA-256，随后创建分析任务。")
+        case .completed(let jobID):
+            VStack(alignment: .leading, spacing: 8) {
+                StatusBadge(text: "上传完成", systemImage: "checkmark.icloud.fill", color: .green)
+                Text("分析任务 \(String(jobID.uuidString.prefix(8))) 已创建，只上传了压缩副本。")
+                    .font(.caption)
+                    .foregroundStyle(AppUI.inkSoft)
+            }
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func uploadActivity(title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ProgressView()
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(AppUI.inkSoft)
+            }
+        }
+    }
+
+    private var isUploadBusy: Bool {
+        switch uploadModel.state {
+        case .compressing, .hashing, .uploading, .validating:
+            true
+        case .ready, .completed, .failed:
+            false
+        }
+    }
+
+    private var primaryUploadTitle: String {
+        if case .failed = uploadModel.state {
+            return "继续上传"
+        }
+        return "压缩并上传视频"
+    }
+
+    private func startUpload(allowsCellular: Bool) {
+        guard let uploadRunner else { return }
+        Task {
+            await uploadModel.start(
+                project: project,
+                runner: uploadRunner,
+                allowsCellular: allowsCellular
+            )
+        }
     }
 
     private var localBackendCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             StageSectionHeader(
                 eyebrow: "Local API",
-                title: "云分析任务连接",
-                detail: "当前只发送视频元数据，不会上传视频。真实 AI 分析将在后续阶段接入。"
+                title: "元数据诊断连接",
+                detail: "开发者诊断入口只发送视频元数据，用于单独检查 Jobs API。"
             )
 
             switch connectionModel.state {

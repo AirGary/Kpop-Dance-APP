@@ -12,6 +12,7 @@ import SwiftData
 struct kpopApp: App {
     private let modelContainer: ModelContainer
     private let jobsAPIClient: JobsAPIClient?
+    private let uploadRunner: UploadRunner?
 
     init() {
         do {
@@ -20,14 +21,17 @@ struct kpopApp: App {
             fatalError("Failed to create SwiftData container: \(error)")
         }
         #if DEBUG
-        jobsAPIClient = JobsAPIClient(
-            configuration: JobsAPIConfiguration(
-                baseURL: URL(string: "http://127.0.0.1:8000")!,
-                bearerToken: "dev-user-a"
-            )
+        let configuration = JobsAPIConfiguration(
+            baseURL: URL(string: "http://127.0.0.1:8000")!,
+            bearerToken: "dev-user-a"
+        )
+        jobsAPIClient = JobsAPIClient(configuration: configuration)
+        uploadRunner = try? UploadRunner(
+            coordinator: ResumableUploadCoordinator.live(configuration: configuration)
         )
         #else
         jobsAPIClient = nil
+        uploadRunner = nil
         #endif
     }
 
@@ -35,6 +39,7 @@ struct kpopApp: App {
         WindowGroup {
             RootView()
                 .environment(\.jobsAPIClient, jobsAPIClient)
+                .environment(\.uploadRunner, uploadRunner)
         }
         .modelContainer(modelContainer)
     }
