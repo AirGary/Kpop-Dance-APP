@@ -39,7 +39,8 @@ def test_cloud_run_is_public_scale_to_zero_and_bounded():
     assert 'memory = "512Mi"' in source
     assert 'name  = "APP_ENVIRONMENT"' in source
     assert 'value = "cloud-bootstrap"' in source
-    assert 'path = "/healthz"' in source
+    assert 'path = "/health"' in source
+    assert "/healthz" not in source
     assert 'resource "google_cloud_run_service_iam_member" "public"' in source
     assert 'role     = "roles/run.invoker"' in source
     assert 'member   = "allUsers"' in source

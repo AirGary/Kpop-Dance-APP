@@ -5,7 +5,7 @@ it accepts resumable video uploads but does not contact Google Cloud, run AI
 analysis, or persist metadata after the Python process stops.
 
 Stage 5A adds a production container and a fail-closed `cloud-bootstrap` mode.
-That mode exposes `/healthz` for deployment checks but rejects development
+That mode exposes `/health` for deployment checks but rejects development
 Bearer identities. It does not make the local upload implementation a cloud
 storage service.
 
@@ -39,7 +39,7 @@ python3 -m venv .venv
 In a second terminal, check the public endpoint:
 
 ```bash
-curl http://127.0.0.1:8000/healthz
+curl http://127.0.0.1:8000/health
 ```
 
 Create and then fetch a local draft job:
@@ -91,7 +91,7 @@ docker run --rm -p 18080:8080 \
 From another terminal, verify the public health route and fail-closed identity:
 
 ```bash
-curl http://127.0.0.1:18080/healthz
+curl http://127.0.0.1:18080/health
 curl -i -H 'Authorization: Bearer dev-user-a' \
   http://127.0.0.1:18080/v1/me
 ```

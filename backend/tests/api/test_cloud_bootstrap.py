@@ -8,7 +8,7 @@ from api.app.main import create_app
 def test_cloud_bootstrap_health_is_public(tmp_path):
     settings = Settings(environment="cloud-bootstrap", object_storage_root=tmp_path)
     with TestClient(create_app(settings=settings)) as client:
-        response = client.get("/healthz")
+        response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "environment": "cloud-bootstrap"}

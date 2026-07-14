@@ -101,7 +101,7 @@ smoke_test() {
   require_tools curl terraform
   local api_url health protected_body protected_status
   api_url="$(terraform_dev output -raw api_url)"
-  health="$(curl --fail --silent --show-error "$api_url/healthz")"
+  health="$(curl --fail --silent --show-error "$api_url/health")"
   if [[ "$health" != *'"status":"ok"'* || "$health" != *'"environment":"cloud-bootstrap"'* ]]; then
     printf 'Unexpected health response: %s\n' "$health" >&2
     exit 1

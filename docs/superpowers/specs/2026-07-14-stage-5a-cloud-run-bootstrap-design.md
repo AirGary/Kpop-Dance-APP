@@ -13,7 +13,7 @@ Stage 5A delivers one independently testable cloud slice:
 - Package the FastAPI service as a production container.
 - Store the image in Artifact Registry in `asia-southeast1`.
 - Deploy the image to Cloud Run in `asia-southeast1`.
-- Expose `GET /healthz` for runtime verification.
+- Expose `GET /health` for runtime verification.
 - Reject every protected `/v1` operation until Firebase authentication is implemented in a later Stage 5 batch.
 - Manage the deployable resources with Terraform and least-privilege service accounts.
 - Show the deployed Cloud Run service, request logs, budget, and live health response in Google Cloud Console.
@@ -27,7 +27,7 @@ flowchart LR
     B["Developer Mac"] -->|"docker buildx"| I["Artifact Registry"]
     T["Terraform"] --> R["Cloud Run"]
     I --> R
-    U["Browser smoke test"] -->|"GET /healthz"| R
+    U["Browser smoke test"] -->|"GET /health"| R
     X["Protected API request"] -->|"deny before Firebase Auth"| R
     R --> L["Cloud Logging"]
 ```
@@ -68,7 +68,7 @@ The container runs Uvicorn as a non-root user and receives configuration only th
 2. Terraform creates the Artifact Registry foundation without creating compute instances.
 3. Docker builds a `linux/amd64` image locally and pushes it with an immutable content digest.
 4. Terraform deploys that digest to Cloud Run.
-5. A browser requests `/healthz`; Cloud Run may start one instance, returns the health contract, and scales back to zero when idle.
+5. A browser requests `/health`; Cloud Run may start one instance, returns the health contract, and scales back to zero when idle.
 6. A request to a protected `/v1` endpoint receives an authentication rejection and performs no data write.
 7. Cloud Logging records request metadata and status without recording credentials or user video content.
 
@@ -96,11 +96,11 @@ Stage 5A stores no user business records. Artifact Registry stores only applicat
 
 - Existing backend tests pass without changes to local behavior.
 - New tests prove cloud bootstrap mode denies protected API calls and rejects unknown environments.
-- Docker builds for `linux/amd64`, starts locally, and returns the expected `/healthz` payload.
+- Docker builds for `linux/amd64`, starts locally, and returns the expected `/health` payload.
 - Container execution is non-root and contains no development object files or credentials.
 - `terraform fmt -check`, `terraform validate`, and infrastructure contract tests pass.
 - The reviewed Terraform plan contains only Stage 5A resources.
-- The deployed `/healthz` endpoint succeeds over HTTPS.
+- The deployed `/health` endpoint succeeds over HTTPS.
 - A protected endpoint is rejected and creates no job or upload.
 - Cloud Run reports minimum zero, maximum one, and no GPU.
 - The Google Cloud billing page shows the `JPY 1,000` Stage Lab budget.

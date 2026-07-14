@@ -13,7 +13,8 @@ def test_cloud_script_has_guarded_commands():
     assert 'readonly system_git="/usr/bin/git"' in source
     assert "image_summary.digest" in source
     assert "stage5a.tfplan" in source
-    assert "/healthz" in source
+    assert '$api_url/health"' in source
+    assert "/healthz" not in source
     assert "/v1/me" in source
     assert "-auto-approve" not in source
 

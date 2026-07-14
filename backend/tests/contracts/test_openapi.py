@@ -7,7 +7,7 @@ def test_openapi_exposes_only_approved_operations(client):
     }
 
     assert operations == {
-        ("GET", "/healthz"),
+        ("GET", "/health"),
         ("GET", "/v1/me"),
         ("POST", "/v1/jobs"),
         ("GET", "/v1/jobs/{job_id}"),

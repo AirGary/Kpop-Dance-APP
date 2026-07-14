@@ -15,7 +15,7 @@
 - Cloud Run minimum instances is `0`; maximum instances is `1`.
 - Cloud Run resources are limited to `1` CPU and `512Mi` memory.
 - No GPU, Firestore, Cloud Storage, Cloud Build, VPC connector, load balancer, or AI worker may be created.
-- Only `GET /healthz` is intentionally usable in cloud bootstrap mode.
+- Only `GET /health` is intentionally usable in cloud bootstrap mode.
 - Development bearer tokens must not authorize protected cloud requests.
 - The existing local development API and its tests must remain operational.
 - Every behavior change follows test-first RED-GREEN verification.
@@ -42,7 +42,7 @@
 
 - [ ] **Step 1: Write failing cloud-mode tests**
 
-Add tests that create a `TestClient` with `Settings(environment="cloud-bootstrap")`, assert `/healthz` returns that environment, assert `Bearer dev-user-a` receives `401 unauthorized` from `/v1/me`, and assert `create_app(Settings(environment="unknown"))` raises `ValueError`.
+Add tests that create a `TestClient` with `Settings(environment="cloud-bootstrap")`, assert `/health` returns that environment, assert `Bearer dev-user-a` receives `401 unauthorized` from `/v1/me`, and assert `create_app(Settings(environment="unknown"))` raises `ValueError`.
 
 ```python
 from fastapi.testclient import TestClient
@@ -55,7 +55,7 @@ from api.app.main import create_app
 def test_cloud_bootstrap_health_is_public(tmp_path):
     settings = Settings(environment="cloud-bootstrap", object_storage_root=tmp_path)
     with TestClient(create_app(settings=settings)) as client:
-        response = client.get("/healthz")
+        response = client.get("/health")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "environment": "cloud-bootstrap"}
@@ -236,7 +236,7 @@ cd backend
 .venv/bin/python -m pytest tests/contracts/test_container_structure.py -q
 docker build --platform linux/amd64 -t stage-lab-api:stage5a .
 container_id=$(docker run -d --rm -p 18080:8080 -e APP_ENVIRONMENT=cloud-bootstrap stage-lab-api:stage5a)
-for attempt in {1..30}; do curl --fail --silent http://127.0.0.1:18080/healthz && break; sleep 1; done
+for attempt in {1..30}; do curl --fail --silent http://127.0.0.1:18080/health && break; sleep 1; done
 curl --silent --output /tmp/stage-lab-protected.json --write-out '%{http_code}' -H 'Authorization: Bearer dev-user-a' http://127.0.0.1:18080/v1/me
 docker exec "$container_id" id -u
 docker stop "$container_id"
@@ -288,7 +288,7 @@ assert 'cpu    = "1"' in api_source
 assert 'memory = "512Mi"' in api_source
 assert 'APP_ENVIRONMENT' in api_source
 assert 'value = "cloud-bootstrap"' in api_source
-assert 'path = "/healthz"' in api_source
+assert 'path = "/health"' in api_source
 assert 'role     = "roles/run.invoker"' in api_source
 assert 'member   = "allUsers"' in api_source
 assert "gpu" not in combined_source.lower()
@@ -370,7 +370,7 @@ template {
       failure_threshold     = 10
 
       http_get {
-        path = "/healthz"
+        path = "/health"
       }
     }
   }
@@ -433,7 +433,7 @@ def test_cloud_script_has_guarded_commands():
     assert "--platform linux/amd64" in source
     assert "image_summary.digest" in source
     assert "stage5a.tfplan" in source
-    assert "/healthz" in source
+    assert "/health" in source
     assert "/v1/me" in source
     assert "-auto-approve" not in source
 ```
@@ -457,7 +457,7 @@ The script must use `set -euo pipefail`, verify `gcloud`, `docker`, and `terrafo
 - `image`: configure Artifact Registry authentication, build and push `linux/amd64` with the current Git SHA tag, resolve its registry digest, and print `asia-southeast1-docker.pkg.dev/stage-lab-dev-gary-202607/stage-lab-api/api@sha256:...`.
 - `plan IMAGE_DIGEST_URI`: save a Terraform plan to `stage5a.tfplan` using the immutable digest URI.
 - `apply`: require the saved plan and invoke `terraform apply stage5a.tfplan` without `-auto-approve`.
-- `smoke`: read `api_url`, require `/healthz` status `200` with `cloud-bootstrap`, and require `/v1/me` with a development token to return `401`.
+- `smoke`: read `api_url`, require `/health` status `200` with `cloud-bootstrap`, and require `/v1/me` with a development token to return `401`.
 
 The script must never link billing, create budgets, create a Firebase project, or invoke Cloud Build.
 
@@ -574,7 +574,7 @@ Expected: Cloud Run reports the intended image and limits with no GPU, and the S
 
 - [ ] **Step 7: Show the deployed interface**
 
-Open the authenticated Google Cloud Console pages for Cloud Run, Artifact Registry, Logs Explorer, and Billing Budgets. Show the user the live `/healthz` URL and explain which resources exist, which remain intentionally absent, and where current cost is visible.
+Open the authenticated Google Cloud Console pages for Cloud Run, Artifact Registry, Logs Explorer, and Billing Budgets. Show the user the live `/health` URL and explain which resources exist, which remain intentionally absent, and where current cost is visible.
 
 - [ ] **Step 8: Record any command correction, verify, commit, and push**
 
