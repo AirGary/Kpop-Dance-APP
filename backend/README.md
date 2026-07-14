@@ -1,16 +1,18 @@
 # Stage Lab Local Backend
 
-This directory contains the Stage 2 development API. It is intentionally local:
-it does not upload videos, contact Google Cloud, run AI analysis, or persist data
-after the Python process stops.
+This directory contains the Stage 4 development API. It is intentionally local:
+it accepts resumable video uploads but does not contact Google Cloud, run AI
+analysis, or persist metadata after the Python process stops.
 
 ## What Goes In And Out
 
-- Input: development Bearer identity plus validated video metadata. Video bytes
-  are not accepted by this stage.
+- Input: development Bearer identity, validated MP4 metadata, and ordered 5 MiB
+  upload chunks through a short-lived signed URL.
 - Output: a draft analysis-job record with stable JSON field names.
 - Job data: stored only in process memory and lost when the server restarts.
-- Object cleanup: restricted to the configured local temporary storage root.
+- Video data: stored under an owner-isolated local temporary root and checked
+  against the declared byte count and SHA-256 before Job creation.
+- Object cleanup: upload sessions and local source objects expire after 24 hours.
 - Ownership: only the user who created a job can read or delete it. Unknown and
   foreign jobs return the same `404 job_not_found` response.
 - Failures: every API failure uses the shared `error.code`, `error.message`, and
@@ -52,9 +54,10 @@ curl http://127.0.0.1:8000/v1/jobs/JOB_ID \
   -H 'Authorization: Bearer dev-user-a'
 ```
 
-Stop the server with `Control-C`. The job disappears because this stage uses an
-in-memory repository. The Terraform files under `infra/terraform` are design
-scaffolding only; no deployment command is automated or required in Stage 2.
+Stop the server with `Control-C`. Job and upload metadata disappear because this
+stage uses in-memory repositories. The Terraform files under `infra/terraform`
+are design scaffolding only; no deployment command is automated or required in
+Stage 4.
 
 ## One-Command Check
 
@@ -72,6 +75,8 @@ installed. It never runs `terraform apply` and never creates cloud resources.
 
 Keep Uvicorn running on `127.0.0.1:8000`, then run the `kpop` Debug scheme on
 the iPhone 17 Simulator. Import an MP4 or MOV shorter than six minutes, open its
-analysis page, and tap `创建云分析任务`. A successful card shows the draft state
-and the first eight characters of the server job ID. This Stage 3 flow sends
-metadata only; video bytes remain on the simulator.
+analysis page, and tap `压缩并上传视频`. The app creates a managed highest-1080p
+MP4 copy, uploads it in resumable chunks, validates it, and displays the first
+eight characters of the new draft Job ID. The original imported video remains
+unchanged. The separate `元数据诊断连接` card continues to test Jobs API without
+uploading video bytes.
