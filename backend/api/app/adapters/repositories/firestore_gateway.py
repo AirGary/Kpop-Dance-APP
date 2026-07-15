@@ -29,6 +29,13 @@ class FirestoreGateway(Protocol):
         value: object,
     ) -> list[Document]: ...
 
+    async def query_equal(
+        self,
+        collection: str,
+        field: str,
+        value: object,
+    ) -> list[Document]: ...
+
 
 class GoogleFirestoreGateway:
     def __init__(self, project_id: str) -> None:
@@ -64,6 +71,19 @@ class GoogleFirestoreGateway:
 
         query = self._client.collection(collection).where(
             filter=FieldFilter(field, "<=", value)
+        )
+        return [snapshot.to_dict() async for snapshot in query.stream()]
+
+    async def query_equal(
+        self,
+        collection: str,
+        field: str,
+        value: object,
+    ) -> list[Document]:
+        from google.cloud.firestore_v1.base_query import FieldFilter
+
+        query = self._client.collection(collection).where(
+            filter=FieldFilter(field, "==", value)
         )
         return [snapshot.to_dict() async for snapshot in query.stream()]
 

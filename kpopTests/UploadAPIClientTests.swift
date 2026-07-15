@@ -32,6 +32,7 @@ struct UploadAPIClientTests {
         #expect(session.uploadID == uploadID)
         #expect(session.chunkSize == 5_242_880)
         #expect(session.offset == 0)
+        #expect(session.uploadProtocol == .stageLab)
         #expect(session.uploadURL.query == "token=opaque")
     }
 
@@ -53,7 +54,11 @@ struct UploadAPIClientTests {
         }
         let client = UploadAPIClient(configuration: configuration(), transport: transport)
 
-        let offset = try await client.offset(uploadURL: signedURL)
+        let offset = try await client.offset(
+            uploadURL: signedURL,
+            protocol: .stageLab,
+            total: 6
+        )
 
         #expect(offset == 3)
     }
@@ -66,6 +71,7 @@ struct UploadAPIClientTests {
             #expect(request.url == signedURL)
             #expect(request.httpBody == Data("abc".utf8))
             #expect(request.value(forHTTPHeaderField: "Content-Range") == "bytes 3-5/6")
+            #expect(request.value(forHTTPHeaderField: "X-Goog-Hash") == nil)
             #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
             return (
                 Data(),
@@ -76,12 +82,92 @@ struct UploadAPIClientTests {
 
         let result = try await client.putChunk(
             uploadURL: signedURL,
+            protocol: .stageLab,
             data: Data("abc".utf8),
             start: 3,
-            total: 6
+            total: 6,
+            crc32c: nil
         )
 
         #expect(result.offset == 6)
+        #expect(result.isComplete == false)
+    }
+
+    @Test
+    func gcsOffsetQueriesResumableSessionWithoutBearer() async throws {
+        let sessionURL = URL(string: "https://storage.example/upload?session=secret")!
+        let transport = HTTPTransport { request in
+            #expect(request.httpMethod == "PUT")
+            #expect(request.url == sessionURL)
+            #expect(request.httpBody == Data())
+            #expect(request.value(forHTTPHeaderField: "Content-Range") == "bytes */6")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+            return (
+                Data(),
+                self.response(
+                    status: 308,
+                    request: request,
+                    headers: ["Range": "bytes=0-2"]
+                )
+            )
+        }
+        let client = UploadAPIClient(configuration: configuration(), transport: transport)
+
+        let offset = try await client.offset(
+            uploadURL: sessionURL,
+            protocol: .gcsResumable,
+            total: 6
+        )
+
+        #expect(offset == 3)
+    }
+
+    @Test
+    func gcsFinalChunkAcceptsStorageSuccessResponse() async throws {
+        let sessionURL = URL(string: "https://storage.example/upload?session=secret")!
+        let transport = HTTPTransport { request in
+            #expect(request.value(forHTTPHeaderField: "Content-Range") == "bytes 3-5/6")
+            #expect(request.value(forHTTPHeaderField: "X-Goog-Hash") == "crc32c=4waSgw==")
+            return (Data(), self.response(status: 200, request: request))
+        }
+        let client = UploadAPIClient(configuration: configuration(), transport: transport)
+
+        let result = try await client.putChunk(
+            uploadURL: sessionURL,
+            protocol: .gcsResumable,
+            data: Data("abc".utf8),
+            start: 3,
+            total: 6,
+            crc32c: "4waSgw=="
+        )
+
+        #expect(result.offset == 6)
+        #expect(result.isComplete == true)
+    }
+
+    @Test
+    func gcsNonFinalChunkDoesNotSendWholeObjectChecksum() async throws {
+        let sessionURL = URL(string: "https://storage.example/upload?session=secret")!
+        let transport = HTTPTransport { request in
+            #expect(request.value(forHTTPHeaderField: "Content-Range") == "bytes 0-2/6")
+            #expect(request.value(forHTTPHeaderField: "X-Goog-Hash") == nil)
+            return (
+                Data(),
+                self.response(status: 308, request: request, headers: ["Range": "bytes=0-2"])
+            )
+        }
+        let client = UploadAPIClient(configuration: configuration(), transport: transport)
+
+        let result = try await client.putChunk(
+            uploadURL: sessionURL,
+            protocol: .gcsResumable,
+            data: Data("abc".utf8),
+            start: 0,
+            total: 6,
+            crc32c: "4waSgw=="
+        )
+
+        #expect(result.offset == 3)
         #expect(result.isComplete == false)
     }
 
@@ -151,7 +237,7 @@ struct UploadAPIClientTests {
     }
 
     private func sessionJSON() -> Data {
-        Data(#"{"uploadId":"\#(uploadID.uuidString.lowercased())","uploadUrl":"http://127.0.0.1:8000/v1/uploads/\#(uploadID.uuidString.lowercased())/content?token=opaque","expiresAt":"2026-07-14T05:00:00Z","chunkSize":5242880,"offset":0}"#.utf8)
+        Data(#"{"uploadId":"\#(uploadID.uuidString.lowercased())","uploadUrl":"http://127.0.0.1:8000/v1/uploads/\#(uploadID.uuidString.lowercased())/content?token=opaque","expiresAt":"2026-07-14T05:00:00Z","chunkSize":5242880,"offset":0,"uploadProtocol":"stage-lab"}"#.utf8)
     }
 
     private func jobJSON() -> Data {

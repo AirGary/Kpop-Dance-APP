@@ -4,13 +4,15 @@ set -euo pipefail
 readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly backend_root="$repository_root/backend"
 readonly terraform_root="$repository_root/infra/terraform/environments/dev"
-readonly plan_file="$terraform_root/stage5a.tfplan"
+readonly plan_file="$terraform_root/stage5b.tfplan"
 readonly project_id="stage-lab-dev-gary-202607"
 readonly region="asia-southeast1"
 readonly repository="stage-lab-api"
 readonly image_name="api"
 readonly registry_host="$region-docker.pkg.dev"
 readonly image_base="$registry_host/$project_id/$repository/$image_name"
+readonly source_bucket_name="stage-lab-dev-gary-202607-source"
+readonly result_bucket_name="stage-lab-dev-gary-202607-results"
 readonly bootstrap_digest="sha256:0000000000000000000000000000000000000000000000000000000000000000"
 readonly system_git="/usr/bin/git"
 
@@ -38,9 +40,11 @@ foundation() {
   terraform_dev init
   terraform_dev apply \
     -target='google_project_service.required' \
-    -target='module.api.google_artifact_registry_repository.api' \
+    -target='google_artifact_registry_repository.api' \
     -var="project_id=$project_id" \
-    -var="container_image=$image_base@$bootstrap_digest"
+    -var="container_image=$image_base@$bootstrap_digest" \
+    -var="source_bucket_name=$source_bucket_name" \
+    -var="result_bucket_name=$result_bucket_name"
 }
 
 build_image() {
@@ -84,7 +88,9 @@ create_plan() {
   terraform_dev plan \
     -out="$plan_file" \
     -var="project_id=$project_id" \
-    -var="container_image=$image_uri"
+    -var="container_image=$image_uri" \
+    -var="source_bucket_name=$source_bucket_name" \
+    -var="result_bucket_name=$result_bucket_name"
   printf 'Saved reviewed plan candidate: %s\n' "$plan_file"
 }
 
@@ -102,7 +108,7 @@ smoke_test() {
   local api_url health protected_body protected_status
   api_url="$(terraform_dev output -raw api_url)"
   health="$(curl --fail --silent --show-error "$api_url/health")"
-  if [[ "$health" != *'"status":"ok"'* || "$health" != *'"environment":"cloud-bootstrap"'* ]]; then
+  if [[ "$health" != *'"status":"ok"'* || "$health" != *'"environment":"cloud"'* ]]; then
     printf 'Unexpected health response: %s\n' "$health" >&2
     exit 1
   fi

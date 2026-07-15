@@ -42,6 +42,22 @@ class InMemoryUploadRepository:
             upload_id = self._idempotency.get((owner_id, idempotency_key))
             return self._sessions.get(upload_id) if upload_id is not None else None
 
+    async def find_completed(
+        self,
+        owner_id: str,
+        job_id: UUID,
+    ) -> UploadSession | None:
+        async with self._lock:
+            return next(
+                (
+                    session
+                    for session in self._sessions.values()
+                    if session.owner_id == owner_id
+                    and session.completed_job_id == job_id
+                ),
+                None,
+            )
+
     async def update_offset(
         self,
         upload_id: UUID,

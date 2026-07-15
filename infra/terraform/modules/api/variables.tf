@@ -13,6 +13,11 @@ variable "container_image" {
   type        = string
 }
 
+variable "api_service_account_email" {
+  description = "Dedicated runtime service account created by the environment."
+  type        = string
+}
+
 variable "source_bucket" {
   description = "Private source-video bucket name exposed to the API."
   type        = string

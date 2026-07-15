@@ -50,3 +50,16 @@ class FakeFirestoreGateway:
             for path, document in self.documents.items()
             if path.startswith(prefix) and document[field] <= value
         ]
+
+    async def query_equal(
+        self,
+        collection: str,
+        field: str,
+        value: object,
+    ) -> list[dict[str, Any]]:
+        prefix = f"{collection}/"
+        return [
+            deepcopy(document)
+            for path, document in self.documents.items()
+            if path.startswith(prefix) and document.get(field) == value
+        ]

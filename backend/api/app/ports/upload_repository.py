@@ -17,6 +17,7 @@ class UploadSession:
     offset: int
     expires_at: datetime
     completed_job_id: UUID | None = None
+    upload_url: str | None = None
 
 
 class UploadIdempotencyConflictError(Exception):
@@ -32,6 +33,12 @@ class UploadRepository(Protocol):
         self,
         owner_id: str,
         idempotency_key: str,
+    ) -> UploadSession | None: ...
+
+    async def find_completed(
+        self,
+        owner_id: str,
+        job_id: UUID,
     ) -> UploadSession | None: ...
 
     async def update_offset(

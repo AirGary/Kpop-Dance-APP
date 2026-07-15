@@ -193,7 +193,7 @@ private actor RequestSequence {
     func send(_ request: URLRequest) throws -> (Data, URLResponse) {
         if request.httpMethod == "POST", request.url?.path == "/v1/uploads" {
             createKeys.append(request.value(forHTTPHeaderField: "Idempotency-Key") ?? "")
-            let body = Data(#"{"uploadId":"\#(uploadID.uuidString.lowercased())","uploadUrl":"http://127.0.0.1:8000/upload?token=opaque","expiresAt":"2026-07-14T05:00:00Z","chunkSize":5242880,"offset":0}"#.utf8)
+            let body = Data(#"{"uploadId":"\#(uploadID.uuidString.lowercased())","uploadUrl":"http://127.0.0.1:8000/upload?token=opaque","expiresAt":"2026-07-14T05:00:00Z","chunkSize":5242880,"offset":0,"uploadProtocol":"stage-lab"}"#.utf8)
             return (body, response(status: 201, request: request))
         }
         if request.httpMethod == "HEAD" {

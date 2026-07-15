@@ -93,9 +93,18 @@ nonisolated struct ResumableUploadCoordinator: Sendable {
             ),
             idempotencyKey: "upload-\(keySuffix)"
         )
-        var confirmedBytes = try await api.offset(uploadURL: session.uploadURL)
+        var confirmedBytes = try await api.offset(
+            uploadURL: session.uploadURL,
+            protocol: session.uploadProtocol,
+            total: totalBytes
+        )
         guard confirmedBytes >= 0, confirmedBytes <= totalBytes else {
             throw ResumableUploadError.invalidServerOffset
+        }
+        let crc32c: String? = if session.uploadProtocol == .gcsResumable, confirmedBytes < totalBytes {
+            try CRC32C.base64EncodedChecksum(fileURL: staging.fileURL(projectID: projectID))
+        } else {
+            nil
         }
 
         await onProgress(.uploading(
@@ -117,9 +126,11 @@ nonisolated struct ResumableUploadCoordinator: Sendable {
             }
             let result = try await api.putChunk(
                 uploadURL: session.uploadURL,
+                protocol: session.uploadProtocol,
                 data: chunk,
                 start: confirmedBytes,
-                total: totalBytes
+                total: totalBytes,
+                crc32c: crc32c
             )
             guard result.offset > confirmedBytes, result.offset <= totalBytes else {
                 throw ResumableUploadError.stalledUpload

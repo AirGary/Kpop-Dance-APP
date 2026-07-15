@@ -60,6 +60,22 @@ async def test_firestore_upload_replays_and_rejects_changed_request() -> None:
 
 
 @pytest.mark.asyncio
+async def test_firestore_upload_replaces_stale_idempotency_index() -> None:
+    gateway = FakeFirestoreGateway()
+    repository = FirestoreUploadRepository(gateway)
+    original = make_session()
+    await repository.create(original)
+    gateway.documents.pop(f"uploads/{original.id}")
+    replacement = make_session()
+
+    stored, created = await repository.create(replacement)
+
+    assert created is True
+    assert stored == replacement
+    assert await repository.find_idempotent("owner-a", "upload-key") == replacement
+
+
+@pytest.mark.asyncio
 async def test_firestore_upload_offset_update_is_compare_and_set() -> None:
     repository = FirestoreUploadRepository(FakeFirestoreGateway())
     session = make_session()
@@ -84,8 +100,11 @@ async def test_firestore_upload_completion_expiration_and_delete() -> None:
 
     assert updated.token_digest == "rotated"
     assert completed.completed_job_id == job_id
+    assert await repository.find_completed("owner-a", job_id) == completed
+    assert await repository.find_completed("owner-b", job_id) is None
     assert await repository.expired_before(datetime.now(UTC)) == [expired]
 
     await repository.delete(active.id)
     assert await repository.get(active.id) is None
     assert await repository.find_idempotent("owner-a", "active-key") is None
+    assert await repository.find_completed("owner-a", job_id) is None

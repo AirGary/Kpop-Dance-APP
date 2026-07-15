@@ -30,12 +30,11 @@ class FirestoreUploadRepository:
                 existing = await transaction.get(
                     _upload_path(UUID(index["uploadId"]))
                 )
-                if existing is None:
-                    raise RuntimeError("Firestore upload idempotency index is inconsistent.")
-                stored = _session_from_document(existing)
-                if stored.request_digest != session.request_digest:
-                    raise UploadIdempotencyConflictError
-                return stored, False
+                if existing is not None:
+                    stored = _session_from_document(existing)
+                    if stored.request_digest != session.request_digest:
+                        raise UploadIdempotencyConflictError
+                    return stored, False
 
             transaction.set(upload_path, _session_to_document(session))
             transaction.set(
@@ -66,6 +65,25 @@ class FirestoreUploadRepository:
         if document is None or document.get("ownerId") != owner_id:
             return None
         return _session_from_document(document)
+
+    async def find_completed(
+        self,
+        owner_id: str,
+        job_id: UUID,
+    ) -> UploadSession | None:
+        documents = await self._gateway.query_equal(
+            "uploads",
+            "completedJobId",
+            str(job_id),
+        )
+        return next(
+            (
+                _session_from_document(document)
+                for document in documents
+                if document.get("ownerId") == owner_id
+            ),
+            None,
+        )
 
     async def update_offset(
         self,
@@ -162,6 +180,7 @@ def _session_to_document(session: UploadSession) -> dict[str, Any]:
             if session.completed_job_id is not None
             else None
         ),
+        "uploadUrl": session.upload_url,
     }
 
 
@@ -179,4 +198,5 @@ def _session_from_document(document: dict[str, Any]) -> UploadSession:
         completed_job_id=(
             UUID(completed_job_id) if completed_job_id is not None else None
         ),
+        upload_url=document.get("uploadUrl"),
     )

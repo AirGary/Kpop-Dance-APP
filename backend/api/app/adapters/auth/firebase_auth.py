@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -7,6 +8,7 @@ from api.app.schemas.errors import APIError
 
 
 TokenDecoder = Callable[[str, str], Mapping[str, Any]]
+_FIREBASE_APP_LOCK = threading.Lock()
 
 
 class FirebaseAuthVerifier:
@@ -45,11 +47,12 @@ def _decode_firebase_token(token: str, project_id: str) -> Mapping[str, Any]:
     from firebase_admin import auth
 
     app_name = f"stage-lab-{project_id}"
-    try:
-        app = firebase_admin.get_app(app_name)
-    except ValueError:
-        app = firebase_admin.initialize_app(
-            options={"projectId": project_id},
-            name=app_name,
-        )
+    with _FIREBASE_APP_LOCK:
+        try:
+            app = firebase_admin.get_app(app_name)
+        except ValueError:
+            app = firebase_admin.initialize_app(
+                options={"projectId": project_id},
+                name=app_name,
+            )
     return auth.verify_id_token(token, app=app)

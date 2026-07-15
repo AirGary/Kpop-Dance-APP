@@ -4,11 +4,12 @@ import hmac
 import json
 import secrets
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from api.app.ports.upload_object_store import UploadObjectStore
+from api.app.ports.direct_upload_object_store import DirectUploadObjectStore
 from api.app.ports.upload_repository import (
     UploadIdempotencyConflictError,
     UploadRepository,
@@ -54,6 +55,7 @@ class CreatedUpload:
     session: UploadSession
     token: str
     created: bool
+    upload_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +77,7 @@ class UploadService:
     def __init__(
         self,
         repository: UploadRepository,
-        object_store: UploadObjectStore,
+        object_store: UploadObjectStore | DirectUploadObjectStore,
         job_service: JobService,
         *,
         clock: Callable[[], datetime] | None = None,
@@ -85,8 +87,34 @@ class UploadService:
         self._jobs = job_service
         self._clock = clock or (lambda: datetime.now(UTC))
         self._upload_locks: dict[UUID, asyncio.Lock] = {}
+        self._session_creation_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._direct_objects: DirectUploadObjectStore | None = None
+
+    @classmethod
+    def direct(
+        cls,
+        repository: UploadRepository,
+        object_store: DirectUploadObjectStore,
+        job_service: JobService,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> "UploadService":
+        service = cls(repository, object_store, job_service, clock=clock)
+        service._direct_objects = object_store
+        return service
 
     async def create_session(
+        self,
+        owner_id: str,
+        idempotency_key: str,
+        request: CreateUploadRequest,
+    ) -> CreatedUpload:
+        key = (owner_id, idempotency_key)
+        lock = self._session_creation_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            return await self._create_session(owner_id, idempotency_key, request)
+
+    async def _create_session(
         self,
         owner_id: str,
         idempotency_key: str,
@@ -104,10 +132,38 @@ class UploadService:
             offset=0,
             expires_at=self._clock() + self.LIFETIME,
         )
+        if self._direct_objects is not None:
+            existing = await self._repository.find_idempotent(
+                owner_id,
+                idempotency_key,
+            )
+            if existing is not None:
+                if existing.request_digest != session.request_digest:
+                    raise UploadRangeError("idempotency_conflict")
+                return CreatedUpload(
+                    session=existing,
+                    token="",
+                    created=False,
+                    upload_url=existing.upload_url,
+                )
+            upload_url = await self._direct_objects.create_resumable_session(
+                owner_id,
+                session.id,
+                request,
+            )
+            session = replace(session, upload_url=upload_url)
         try:
             stored, created = await self._repository.create(session)
         except UploadIdempotencyConflictError as error:
             raise UploadRangeError("idempotency_conflict") from error
+
+        if self._direct_objects is not None:
+            return CreatedUpload(
+                session=stored,
+                token="",
+                created=created,
+                upload_url=stored.upload_url,
+            )
 
         if not created:
             stored = await self._repository.update_token_digest(
@@ -117,6 +173,8 @@ class UploadService:
         return CreatedUpload(session=stored, token=token, created=created)
 
     async def head(self, upload_id: UUID, token: str) -> UploadSession:
+        if self._direct_objects is not None:
+            raise UploadNotFoundError
         await self.cleanup_expired()
         return await self._valid_token_session(upload_id, token)
 
@@ -129,6 +187,8 @@ class UploadService:
         total: int,
         chunks: AsyncIterator[bytes],
     ) -> ChunkResult:
+        if self._direct_objects is not None:
+            raise UploadNotFoundError
         await self.cleanup_expired()
         lock = self._upload_locks.setdefault(upload_id, asyncio.Lock())
         async with lock:
@@ -172,7 +232,7 @@ class UploadService:
         self,
         owner_id: str,
         upload_id: UUID,
-        idempotency_key: str,
+        _idempotency_key: str,
     ) -> CompletedUpload:
         await self.cleanup_expired()
         lock = self._upload_locks.setdefault(upload_id, asyncio.Lock())
@@ -187,7 +247,11 @@ class UploadService:
             actual_size = await self._objects.size(owner_id, upload_id)
             if actual_size != session.request.byte_count:
                 raise UploadIncompleteError
-            if await self._objects.sha256(owner_id, upload_id) != session.request.sha256:
+            if (
+                self._direct_objects is None
+                and await self._objects.sha256(owner_id, upload_id)
+                != session.request.sha256
+            ):
                 await self._objects.delete(owner_id, upload_id)
                 await self._repository.update_offset(upload_id, session.offset, 0)
                 raise ChecksumMismatchError
@@ -203,7 +267,7 @@ class UploadService:
             )
             job, created = await self._jobs.create_job(
                 owner_id,
-                idempotency_key,
+                f"upload-complete:{upload_id}",
                 job_request,
             )
             await self._repository.mark_completed(upload_id, job.id)

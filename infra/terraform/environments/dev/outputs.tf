@@ -5,12 +5,12 @@ output "api_url" {
 
 output "artifact_repository_id" {
   description = "Artifact Registry repository after a future deployment."
-  value       = module.api.repository_id
+  value       = google_artifact_registry_repository.api.id
 }
 
 output "runtime_service_account" {
   description = "Dedicated Cloud Run runtime service account."
-  value       = module.api.runtime_service_account
+  value       = google_service_account.api.email
 }
 
 output "source_bucket_name" {

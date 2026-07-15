@@ -12,10 +12,14 @@ def test_cloud_script_has_guarded_commands():
     assert "--platform linux/amd64" in source
     assert 'readonly system_git="/usr/bin/git"' in source
     assert "image_summary.digest" in source
-    assert "stage5a.tfplan" in source
+    assert "stage5b.tfplan" in source
+    assert "stage-lab-dev-gary-202607-source" in source
+    assert "stage-lab-dev-gary-202607-results" in source
     assert '$api_url/health"' in source
     assert "/healthz" not in source
     assert "/v1/me" in source
+    assert "source_bucket_name" in source
+    assert "result_bucket_name" in source
     assert "-auto-approve" not in source
 
 

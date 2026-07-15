@@ -18,3 +18,12 @@ resource "google_project_iam_member" "api_firestore" {
   role    = "roles/datastore.user"
   member  = "serviceAccount:${var.api_service_account_email}"
 }
+
+resource "google_firestore_field" "upload_expiration" {
+  project    = var.project_id
+  database   = google_firestore_database.jobs.name
+  collection = "uploads"
+  field      = "expiresAt"
+
+  ttl_config {}
+}
