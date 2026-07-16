@@ -51,7 +51,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - [x] 添加失败契约测试，要求 Terraform 忽略该 Provider 默认字段。
 - [x] 实现最小 Terraform 修复并使测试通过。
 - [x] 针对真实云 state 执行只读 `terraform plan`，结果为 `No changes`、退出码 0；无需 apply。
-- [ ] 推送 GitHub，由用户在浏览器合并。
+- [x] 修复提交 `57a7554` 已推送 GitHub，等待用户在浏览器合并。
 - [ ] 用户合并后，从主分支再次确认 `terraform plan -detailed-exitcode` 返回 0。
 
 **Subtask 2：真实双身份冒烟测试**
@@ -126,4 +126,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 - 最后更新：2026-07-16（Asia/Tokyo）。
 - 已部署 Git 提交：`21161a288e73ebc40a5716b01db1d1f8210037a7`。
+- Cloud Run scaling 收敛修复提交：`57a7554`（已推送、待合并）。
 - 当前工作分支：`codex/cloud-run-scaling-drift`。
