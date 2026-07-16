@@ -15,13 +15,13 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环已完成产品设计确认，实施尚未开始。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环规格已验收，实施计划待用户验收。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
 ### 阶段范围
 
-- 包含：本地 FFprobe/FFmpeg、RTMDet、ByteTrack、RTMPose、基础节拍、真实候选舞者、目标聚光、可开关骨架、动作时间轴、结果包校验与离线练习。
+- 包含：本地 FFprobe/FFmpeg、RTMDet-m、ByteTrack、RTMPose-m、基础节拍、真实候选舞者、目标聚光、可开关骨架、动作时间轴、结果包校验与离线练习。
 - 不包含：Sign in with Apple 或其他用户登录、云端 GPU、音乐语义段落、大模型教学文案、付费、APNs、CloudKit。
 - 首轮样本：用户已有的 `82MAJOR Trophy` 视频；通过后再扩大到 3 条和 20 条基准视频。
 - 设计文档：`docs/superpowers/specs/2026-07-16-stage-6-local-real-ai-vertical-slice-design.md`。
@@ -33,6 +33,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-16：用户确认采用低成本 Firebase Authentication 初始化方案；不开启邮箱、手机或匿名登录，仅使用两个临时 Custom Auth 身份完成隔离测试。Identity Platform 初始化不可删除，已采用 Terraform `prevent_destroy` 防止误操作。
 - 2026-07-16：用户要求测试版 Demo 暂不加入账号登录，把真实舞蹈视频 AI 分析和动作分解成品形态设为最高优先级。
 - 2026-07-16：用户确认本地 Worker 优先方案、单视频验收、两阶段分析、聚光 + 可开关骨架 + 时间轴、基础节拍范围、结果格式、错误恢复与回退边界。
+- 2026-07-16：用户确认并合并 Stage 6 书面规格，允许进入实施计划阶段；尚未安装 AI 依赖或修改产品代码。
+- 2026-07-16：用户确认首版模型基线为 RTMDet-m + ByteTrack + RTMPose-m；接口必须可替换，Analysis Package 保持稳定，实施前核对代码与权重商业许可证，首版不使用 VideoMAE 或视频大模型替代逐帧追踪。
 
 ## 已完成阶段
 
@@ -46,7 +48,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 最近完成任务
 
-### Task：Stage 6 本地真实 AI 闭环产品设计（待书面规格验收）
+### Task：Stage 6 本地真实 AI 闭环产品设计（已验收）
 
 **目标：** 固定首个真实 AI 成品范围与实施边界，避免账号和云部署继续阻塞 AI 验证。
 
@@ -56,8 +58,9 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [x] 确认成品播放器为聚光跟随、可开关骨架和动作时间轴。
 - [x] 确认首版只做 BPM、节拍和强拍，不做音乐语义段落。
 - [x] 确认首条 `82MAJOR Trophy` 视频的验收指标与回退方案。
-- [ ] 用户验收仓库内书面设计规格。
-- [ ] 编写并验收实施计划。
+- [x] 用户验收仓库内书面设计规格，GitHub 合并提交 `ff2350d`。
+- [x] 编写实施计划 `docs/superpowers/plans/2026-07-16-stage-6-local-real-ai-vertical-slice.md`。
+- [ ] 用户验收实施计划。
 - [ ] 开始测试先行实施。
 
 ### Task：完成 Stage 5B 部署后收敛与验证（已验收）
@@ -101,7 +104,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - API：Python 3.13、FastAPI、Pydantic、Firebase Admin SDK。
 - 云端：Cloud Run、Firestore、Cloud Storage、Artifact Registry、Terraform。
 - 当前容器：`sha256:3a933b0562e8aaa10b0981e12f35a90f3449b5282a60ea0019ce2b1fe3d68f58`。
-- AI 规划：FFmpeg/FFprobe、RTMDet、ByteTrack、Re-ID、RTMPose 和音乐节拍分析；尚未部署。
+- AI 规划：FFmpeg/FFprobe、RTMDet-m、ByteTrack、RTMPose-m 和基础音乐节拍分析；尚未安装或部署。
 
 ## 测试与验证记录
 
@@ -142,17 +145,18 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - **产品缺口：** iOS 尚未接入 Sign in with Apple 和生产 Firebase Token，因此当前 App 不能完成正式云端登录上传流程。
 - **功能缺口：** 没有真实 AI 分析，当前仅完成云端数据基础。
 - **阶段变更：** 用户登录与正式云上传联调已延期；Stage 6 先解决真实 AI 成品闭环。
-- **模型风险：** RTMDet/RTMPose 在当前 Apple Silicon 环境的 MPS 算子兼容性和实际速度尚未测量，实施时必须保留 CPU 回退并记录耗时。
+- **模型风险：** RTMDet-m/RTMPose-m 在当前 Apple Silicon 环境的 MPS 算子兼容性和实际速度尚未测量；当前默认 Python 为 3.14.6 且没有 FFmpeg，Task 1 必须先建立 Python 3.11 隔离环境、安装 FFmpeg 并验证 CPU 回退。
 - Terraform state 当前只保存在主检出目录本机；丢失会增加基础设施恢复难度，需要后续迁移到受保护的远端 state。
 
 ## 下一阶段建议
 
-下一步是验收 Stage 6 书面设计，然后编写测试先行的实施计划。实施顺序从媒体预检和真实候选舞者开始，之后完成目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。Sign in with Apple 延后到外部 TestFlight 或商品级用户隔离前处理。
+下一步是用户验收 Stage 6 实施计划。验收后从 AI 运行环境与许可证硬门禁开始，再依次实施媒体预检、真实候选舞者、目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。Sign in with Apple 延后到外部 TestFlight 或商品级用户隔离前处理。
 
 ## 阶段验收记录
 
 - 2026-07-16：用户回复“已合并并验收 Stage 5B”，Stage 5B 正式标记为“已完成”。
 - 2026-07-16：用户逐项确认 Stage 6 产品设计；仓库书面规格仍待用户验收。
+- 2026-07-16：用户回复“已合并并确认规格”，Stage 6 书面规格正式验收，进入实施计划编写。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -161,4 +165,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。
 - Firebase Authentication 初始化提交：`420493d`，PR #3 合并提交 `59dec60`。
 - Stage 5B 真实云验证记录提交：`033db4e`，PR #4 合并提交 `d890ecf`。
-- 当前工作分支：`codex/stage6-real-ai-design`（Stage 6 设计与进度记录）。
+- Stage 6 设计合并提交：`ff2350d`。
+- 当前工作分支：`codex/stage6-implementation-plan`（Stage 6 实施计划与进度记录）。
