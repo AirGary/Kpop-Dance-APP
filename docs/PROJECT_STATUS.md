@@ -15,9 +15,9 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础，部署后验证中。**
+**阶段：Stage 5B 云端数据基础，待用户验收。**
 
-已部署 Firebase 项目标记、Firebase/Identity Toolkit API、Firestore、两个私有 Cloud Storage Bucket、Cloud Run `cloud` 模式和最小权限运行账号。Cloud Run 服务级默认 scaling 的 Terraform 假漂移已在当前分支修复并通过真实云状态验证。阶段尚未标记完成或待验收，因为双 Firebase 用户的所有权隔离冒烟测试还未执行。
+已部署 Firebase Authentication、Firestore、两个私有 Cloud Storage Bucket、Cloud Run `cloud` 模式和最小权限运行账号。Terraform 已收敛为零漂移，两个真实 Firebase 临时身份的所有权隔离 smoke 已通过，测试用户、测试任务和临时签名权限均已清理。阶段技术验收条件已满足，等待用户确认后才标记为完成并进入 Stage 6。
 
 ### 阶段范围
 
@@ -41,7 +41,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 ## 进行中任务
 
-### Task：完成 Stage 5B 部署后收敛与验证
+### Task：完成 Stage 5B 部署后收敛与验证（已完成，待验收）
 
 **目标：** 消除 Terraform 假漂移并完成真实身份隔离验证。
 
@@ -52,7 +52,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - [x] 添加失败契约测试，要求 Terraform 忽略该 Provider 默认字段。
 - [x] 实现最小 Terraform 修复并使测试通过。
 - [x] 针对真实云 state 执行只读 `terraform plan`，结果为 `No changes`、退出码 0；无需 apply。
-- [x] 修复提交 `57a7554` 已推送 GitHub，等待用户在浏览器合并。
+- [x] 修复提交 `57a7554` 已由 PR #2 合并。
 - [x] 用户合并后，从主分支再次确认 `terraform plan -detailed-exitcode` 返回 0。
 
 **Subtask 2：真实双身份冒烟测试**
@@ -61,11 +61,11 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - [x] 在 Terraform 中加入 Firebase Authentication 初始化配置，并显式关闭 Email、Phone、Anonymous 登录。
 - [x] 审查并应用只新增 Identity Platform 配置的 Terraform plan：`1 added / 0 changed / 0 destroyed`。
 - [x] 显式设置 Terraform quota project，并锁定 `multi_tenant.allow_tenants=false`；部署后 plan 为 `No changes`。
-- [x] Auth 初始化配置提交 `420493d` 已推送，等待用户合并后从干净 `main` 执行 smoke。
-- [ ] 创建两个临时 Custom Auth 测试身份。
-- [ ] 使用两个不同 Firebase ID Token 运行 `cloud-bootstrap.sh smoke`。
-- [ ] 删除临时测试用户并确认没有残留测试任务。
-- [ ] 验证用户 A 创建记录、用户 B 获得同一 `404`、用户 A 删除后再次 GET 为 `404`。
+- [x] Auth 初始化配置提交 `420493d` 已由 PR #3 合并。
+- [x] 创建两个临时 Custom Auth 测试身份。
+- [x] 使用两个不同 Firebase ID Token 运行 `cloud-bootstrap.sh smoke`。
+- [x] 删除临时测试用户并确认没有残留测试任务或签名权限。
+- [x] 验证用户 A 创建记录、用户 B 获得同一 `404`、用户 A 删除后再次 GET 为 `404`。
 
 ## 数据流、API 与存储位置
 
@@ -88,7 +88,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 ### 2026-07-16 本地与部署前
 
-- `./scripts/verify-backend.sh`：144 项通过，0 失败。
+- `./scripts/verify-backend.sh`：146 项通过，0 失败。
 - `./scripts/verify-ios.sh`：iOS 单元测试、UI 冷启动、Staging 和 Release Simulator 构建通过。
 - `terraform validate` 与 `terraform fmt -check -recursive`：通过。
 - 独立部署门禁复审：P0/P1/P2 均为 0。
@@ -103,7 +103,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - Artifact Registry：7 天清理所有旧版本，同时保留最近 5 个版本；当前约 82.4 MB。
 - Cloud Run scaling 假漂移修复验证：`terraform plan -detailed-exitcode` 返回 0，`No changes`，未执行 apply。
 - Firebase Authentication：Identity Platform 已初始化；Email、Phone、Anonymous 和 Multi-tenant 均关闭，apply 为 `1 added / 0 changed / 0 destroyed`，部署后 plan 为 `No changes`。
-- 未执行：两个真实 Firebase 用户的跨所有者冒烟测试。
+- 双身份 smoke：`health=ok`、无效开发令牌 `401`、`identity_isolation=ok`、Bucket 私有和 Cloud Run 成本门禁通过。
+- 清理复核：临时 Firebase 用户 `0`、临时 Firestore 任务 `0`、临时 Token Creator IAM 绑定 `0`。
 
 ## 部署环境与成本控制
 
@@ -117,7 +118,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 ## 已知问题与风险
 
 - **已解决：** Cloud Run 服务级 scaling 假漂移已由 PR #2 合并，并从主分支在真实云 state 上复核为零变更。
-- **P1，待验证：** Firebase Authentication 已初始化，但尚未创建两个临时测试身份；线上所有权隔离仅有自动化单元/接口测试证据，没有真实云端双用户证据。
+- **已解决：** 两个真实 Firebase 临时身份的线上所有权隔离测试通过，测试身份、任务和临时 IAM 授权已清理。
 - **不可逆配置，已确认：** Identity Platform 项目配置初始化后不能删除；Terraform 使用 `prevent_destroy`，且本阶段不开放 Email、Phone、Anonymous 登录。
 - **产品缺口：** iOS 尚未接入 Sign in with Apple 和生产 Firebase Token，因此当前 App 不能完成正式云端登录上传流程。
 - **功能缺口：** 没有真实 AI 分析，当前仅完成云端数据基础。
@@ -125,16 +126,17 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 ## 下一阶段建议
 
-先完成当前 Stage 5B 的两个 Subtask并进入“待验收”。用户验收后，下一阶段建议为 **Stage 6：iOS Firebase Authentication + Sign in with Apple + 真实云端上传联调**。完成 Stage 6 后，再开始第一阶段 AI：媒体预检、人数检测和候选舞者生成。
+Stage 5B 当前等待用户验收。验收后，下一阶段建议为 **Stage 6：iOS Firebase Authentication + Sign in with Apple + 真实云端上传联调**。完成 Stage 6 后，再开始第一阶段 AI：媒体预检、人数检测和候选舞者生成。
 
 ## 阶段验收记录
 
-- Stage 5B：尚未验收，状态为“部署后验证中”。
+- Stage 5B：技术验证已通过，状态为“待用户验收”。
 
 ## 最后更新时间与对应 Git 提交
 
 - 最后更新：2026-07-16（Asia/Tokyo）。
 - 已部署 Git 提交：`21161a288e73ebc40a5716b01db1d1f8210037a7`。
 - Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。
-- Firebase Authentication 初始化提交：`420493d`（已推送、待合并）。
-- 当前工作分支：`codex/stage5b-firebase-auth-smoke`（Auth 初始化已部署，代码待合并后执行双身份 smoke）。
+- Firebase Authentication 初始化提交：`420493d`，PR #3 合并提交 `59dec60`。
+- Stage 5B 真实云验证记录提交：`033db4e`（已推送、待合并）。
+- 当前工作分支：`codex/stage5b-verification-record`（仅记录真实云验证结果）。
