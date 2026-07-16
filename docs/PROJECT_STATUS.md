@@ -28,6 +28,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 - 2026-07-16：用户明确确认“完成并部署云端基础”。
 - 成本边界：Cloud Run 最小实例 0、最大实例 1、1 CPU、512 MiB；不创建 GPU；预算 JPY 1,000/月，仅发送告警，不是硬停机上限。
+- 2026-07-16：用户确认采用低成本 Firebase Authentication 初始化方案；不开启邮箱、手机或匿名登录，仅使用两个临时 Custom Auth 身份完成隔离测试。Identity Platform 初始化不可删除，已采用 Terraform `prevent_destroy` 防止误操作。
 
 ## 已完成阶段
 
@@ -52,12 +53,17 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - [x] 实现最小 Terraform 修复并使测试通过。
 - [x] 针对真实云 state 执行只读 `terraform plan`，结果为 `No changes`、退出码 0；无需 apply。
 - [x] 修复提交 `57a7554` 已推送 GitHub，等待用户在浏览器合并。
-- [ ] 用户合并后，从主分支再次确认 `terraform plan -detailed-exitcode` 返回 0。
+- [x] 用户合并后，从主分支再次确认 `terraform plan -detailed-exitcode` 返回 0。
 
 **Subtask 2：真实双身份冒烟测试**
 
-- [ ] 配置正式方案所需的 Firebase Authentication / Sign in with Apple 测试身份。
+- [x] 确认低成本测试方案与不可删除配置风险。
+- [x] 在 Terraform 中加入 Firebase Authentication 初始化配置，并显式关闭 Email、Phone、Anonymous 登录。
+- [x] 审查并应用只新增 Identity Platform 配置的 Terraform plan：`1 added / 0 changed / 0 destroyed`。
+- [x] 显式设置 Terraform quota project，并锁定 `multi_tenant.allow_tenants=false`；部署后 plan 为 `No changes`。
+- [ ] 创建两个临时 Custom Auth 测试身份。
 - [ ] 使用两个不同 Firebase ID Token 运行 `cloud-bootstrap.sh smoke`。
+- [ ] 删除临时测试用户并确认没有残留测试任务。
 - [ ] 验证用户 A 创建记录、用户 B 获得同一 `404`、用户 A 删除后再次 GET 为 `404`。
 
 ## 数据流、API 与存储位置
@@ -95,6 +101,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - Firestore TTL：`uploads.ttlExpiresAt` 状态 `ACTIVE`。
 - Artifact Registry：7 天清理所有旧版本，同时保留最近 5 个版本；当前约 82.4 MB。
 - Cloud Run scaling 假漂移修复验证：`terraform plan -detailed-exitcode` 返回 0，`No changes`，未执行 apply。
+- Firebase Authentication：Identity Platform 已初始化；Email、Phone、Anonymous 和 Multi-tenant 均关闭，apply 为 `1 added / 0 changed / 0 destroyed`，部署后 plan 为 `No changes`。
 - 未执行：两个真实 Firebase 用户的跨所有者冒烟测试。
 
 ## 部署环境与成本控制
@@ -108,8 +115,9 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 ## 已知问题与风险
 
-- **待合并：** Cloud Run 服务级 scaling 假漂移已在 `codex/cloud-run-scaling-drift` 修复，并在真实云 state 上验证为零变更；合并后还需从主分支复核一次。
-- **P1，待验证：** 未配置真实 Firebase 测试身份，因此线上所有权隔离仅有自动化单元/接口测试证据，没有真实云端双用户证据。
+- **已解决：** Cloud Run 服务级 scaling 假漂移已由 PR #2 合并，并从主分支在真实云 state 上复核为零变更。
+- **P1，待验证：** Firebase Authentication 已初始化，但尚未创建两个临时测试身份；线上所有权隔离仅有自动化单元/接口测试证据，没有真实云端双用户证据。
+- **不可逆配置，已确认：** Identity Platform 项目配置初始化后不能删除；Terraform 使用 `prevent_destroy`，且本阶段不开放 Email、Phone、Anonymous 登录。
 - **产品缺口：** iOS 尚未接入 Sign in with Apple 和生产 Firebase Token，因此当前 App 不能完成正式云端登录上传流程。
 - **功能缺口：** 没有真实 AI 分析，当前仅完成云端数据基础。
 - Terraform state 当前只保存在主检出目录本机；丢失会增加基础设施恢复难度，需要后续迁移到受保护的远端 state。
@@ -126,5 +134,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 - 最后更新：2026-07-16（Asia/Tokyo）。
 - 已部署 Git 提交：`21161a288e73ebc40a5716b01db1d1f8210037a7`。
-- Cloud Run scaling 收敛修复提交：`57a7554`（已推送、待合并）。
-- 当前工作分支：`codex/cloud-run-scaling-drift`。
+- Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。
+- 当前工作分支：`codex/stage5b-firebase-auth-smoke`（Auth 初始化已部署，代码待合并后执行双身份 smoke）。

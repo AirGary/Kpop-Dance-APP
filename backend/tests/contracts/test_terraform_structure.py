@@ -28,6 +28,13 @@ def test_stage_5b_environment_enables_private_data_modules():
     assert "result_bucket_name" in source
 
 
+def test_google_providers_charge_quota_to_the_managed_project():
+    source = terraform_source("environments/dev/main.tf")
+
+    assert source.count("user_project_override = true") == 2
+    assert source.count("billing_project       = var.project_id") == 2
+
+
 def test_storage_is_private_and_expires_temporary_objects():
     source = terraform_source(
         "modules/storage/main.tf",
@@ -61,6 +68,19 @@ def test_firestore_is_native_and_api_access_is_least_privilege():
     assert "roles/datastore.user" in source
     assert "roles/editor" not in source
     assert "roles/owner" not in source
+
+
+def test_identity_platform_is_initialized_without_public_sign_in_methods():
+    source = terraform_source("modules/data/main.tf")
+
+    assert 'resource "google_identity_platform_config" "default"' in source
+    assert "prevent_destroy = true" in source
+    assert "allow_duplicate_emails = false" in source
+    assert re.search(r"anonymous\s*\{\s*enabled\s*=\s*false\s*\}", source)
+    assert re.search(r"email\s*\{.*?enabled\s*=\s*false.*?\}", source, re.DOTALL)
+    assert re.search(r"phone_number\s*\{.*?enabled\s*=\s*false.*?\}", source, re.DOTALL)
+    assert re.search(r"multi_tenant\s*\{\s*allow_tenants\s*=\s*false\s*\}", source)
+    assert "google_firebase_project.default" in source
 
 
 def test_cloud_run_is_public_scale_to_zero_and_bounded():

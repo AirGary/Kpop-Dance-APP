@@ -3,6 +3,37 @@ resource "google_firebase_project" "default" {
   project  = var.project_id
 }
 
+resource "google_identity_platform_config" "default" {
+  project = var.project_id
+
+  sign_in {
+    allow_duplicate_emails = false
+
+    anonymous {
+      enabled = false
+    }
+
+    email {
+      enabled           = false
+      password_required = true
+    }
+
+    phone_number {
+      enabled = false
+    }
+  }
+
+  multi_tenant {
+    allow_tenants = false
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  depends_on = [google_firebase_project.default]
+}
+
 resource "google_firestore_database" "jobs" {
   project                     = var.project_id
   name                        = "(default)"
