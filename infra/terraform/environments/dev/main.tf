@@ -62,12 +62,21 @@ resource "google_artifact_registry_repository" "api" {
   cleanup_policy_dry_run = false
 
   cleanup_policies {
-    id     = "delete-untagged-after-seven-days"
+    id     = "delete-old-images-after-seven-days"
     action = "DELETE"
 
     condition {
-      tag_state  = "UNTAGGED"
+      tag_state  = "ANY"
       older_than = "604800s"
+    }
+  }
+
+  cleanup_policies {
+    id     = "keep-five-most-recent-images"
+    action = "KEEP"
+
+    most_recent_versions {
+      keep_count = 5
     }
   }
 

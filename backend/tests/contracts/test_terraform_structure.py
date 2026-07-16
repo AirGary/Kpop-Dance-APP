@@ -86,11 +86,13 @@ def test_cloud_run_is_public_scale_to_zero_and_bounded():
     assert "startup_cpu_boost = false" in source
 
 
-def test_artifact_registry_deletes_old_untagged_images():
+def test_artifact_registry_bounds_tagged_and_untagged_image_retention():
     source = terraform_source("environments/dev/main.tf")
 
-    assert 'tag_state  = "UNTAGGED"' in source
+    assert 'tag_state  = "ANY"' in source
     assert 'older_than = "604800s"' in source
+    assert 'action = "KEEP"' in source
+    assert "keep_count = 5" in source
 
 
 def test_stage_5b_uses_one_narrow_runtime_service_account_and_no_gpu():
