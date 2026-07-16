@@ -10,6 +10,9 @@ class Settings(BaseModel):
 
     environment: str = "development"
     object_storage_root: Path = Path(tempfile.gettempdir()) / "stage-lab-objects"
+    google_cloud_project: str | None = None
+    source_bucket_name: str | None = None
+    result_bucket_name: str | None = None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -21,4 +24,7 @@ class Settings(BaseModel):
                 if storage_root
                 else Path(tempfile.gettempdir()) / "stage-lab-objects"
             ),
+            google_cloud_project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            source_bucket_name=os.environ.get("SOURCE_BUCKET_NAME"),
+            result_bucket_name=os.environ.get("RESULT_BUCKET_NAME"),
         )

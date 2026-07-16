@@ -1,4 +1,4 @@
-# Stage Lab Local Backend
+# Stage Lab Backend
 
 This directory contains the Stage 4 development API. It is intentionally local:
 it accepts resumable video uploads but does not contact Google Cloud, run AI
@@ -9,15 +9,24 @@ That mode exposes `/health` for deployment checks but rejects development
 Bearer identities. It does not make the local upload implementation a cloud
 storage service.
 
+Stage 5B adds a separate `cloud` mode. It verifies Firebase ID tokens, stores
+upload and job metadata in Firestore, and returns a private Google Cloud Storage
+resumable-session URL so video bytes travel directly from the App to Storage.
+Local `development` behavior remains available and does not contact Google Cloud.
+
 ## What Goes In And Out
 
-- Input: development Bearer identity, validated MP4 metadata, and ordered 5 MiB
-  upload chunks through a short-lived signed URL.
+- Input: a development identity locally or Firebase identity in cloud mode,
+  validated MP4 metadata, and resumable video bytes.
 - Output: a draft analysis-job record with stable JSON field names.
-- Job data: stored only in process memory and lost when the server restarts.
-- Video data: stored under an owner-isolated local temporary root and checked
-  against the declared byte count and SHA-256 before Job creation.
-- Object cleanup: upload sessions and local source objects expire after 24 hours.
+- Local data: jobs stay in process memory; source bytes use an owner-isolated
+  temporary root and are checked against byte count and SHA-256 before Job creation.
+- Cloud data: metadata uses Firestore and video bytes go directly to private GCS.
+  `/complete` checks object size without downloading the video through Cloud Run.
+  The expected SHA-256 is retained as protected metadata for the asynchronous
+  media preflight stage to validate before analysis begins.
+- Object cleanup: upload sessions and source objects expire after 24 hours. Deleting
+  a cloud Job also removes its linked source object and upload-session metadata.
 - Ownership: only the user who created a job can read or delete it. Unknown and
   foreign jobs return the same `404 job_not_found` response.
 - Failures: every API failure uses the shared `error.code`, `error.message`, and
@@ -99,25 +108,72 @@ curl -i -H 'Authorization: Bearer dev-user-a' \
 The health response reports `cloud-bootstrap`; the protected route returns
 `401`. Stop the foreground container with `Control-C`.
 
-## Guarded Stage 5A Deployment
+## Guarded Stage 5B Deployment
 
 The repository includes a sequential deployment helper. It never links billing,
-changes budgets, invokes Cloud Build, or enables Firebase. Run each command only
-after the previous result has been reviewed:
+changes budgets, or invokes Cloud Build. It fails closed unless it is run from
+the primary `main` checkout that owns the existing local Terraform state, the
+JPY 1,000 budget is scoped only to the Stage Lab project, and the container
+digest is tagged for the current Git HEAD.
+
+Merge the reviewed branch before deployment. Then review and run this one-time
+budget correction separately from the deployment script:
 
 ```bash
-./scripts/cloud-bootstrap.sh foundation
+billing_account="$(
+  gcloud billing projects describe stage-lab-dev-gary-202607 \
+    --format='value(billingAccountName)'
+)"
+budget_name="$(
+  gcloud billing budgets list \
+    --billing-account="${billing_account#billingAccounts/}" \
+    --filter='displayName="Stage Lab Dev Monthly Guardrail"' \
+    --format='value(name)'
+)"
+gcloud billing budgets update "$budget_name" \
+  --filter-projects=projects/stage-lab-dev-gary-202607
+```
+
+This keeps the existing JPY 1,000 amount and 10%, 50%, 80%, and 100%
+current-spend alerts while excluding the other projects on the billing account.
+Budget alerts do not impose a hard spending cap.
+
+The Stage 5A foundation already exists in the development project, so the
+normal Stage 5B sequence is:
+
+```bash
+./scripts/cloud-bootstrap.sh preflight
 image_uri="$(./scripts/cloud-bootstrap.sh image)"
 ./scripts/cloud-bootstrap.sh plan "$image_uri"
-terraform -chdir=infra/terraform/environments/dev show stage5a.tfplan
+terraform -chdir=infra/terraform/environments/dev show stage5b.tfplan
 ./scripts/cloud-bootstrap.sh apply
+export STAGE_LAB_TEST_ID_TOKEN_A='<Firebase ID token for test user A>'
+export STAGE_LAB_TEST_ID_TOKEN_B='<Firebase ID token for test user B>'
 ./scripts/cloud-bootstrap.sh smoke
 ```
 
-`foundation` creates only the required service enablement and Artifact Registry
-repository. `plan` saves the complete Cloud Run proposal for inspection. `apply`
-accepts only that saved plan, and `smoke` verifies the public health endpoint and
-that a development Bearer token is rejected.
+`plan` accepts only an immutable Artifact Registry image tagged for the current
+commit and saves the complete Cloud Run, private Storage, Firestore, IAM, and
+Firebase-project proposal for inspection. `apply` rechecks the saved plan image
+before changing infrastructure. Never apply the temporary preview plan produced
+with the old Stage 5A image.
+
+`smoke` requires short-lived ID tokens from two different Firebase test users.
+It checks public health, invalid-token rejection, valid identities,
+cross-owner `404` isolation, bucket privacy and lifecycle policies, and the
+Cloud Run `0-1` instance, `1 CPU`, `512MiB` limits. Do not commit or paste the
+tokens into source files.
+
+The source and result buckets reject public access, disable soft delete, and
+delete temporary objects after one and seven days respectively. Firestore TTL
+removes expired upload-session records. Storage lifecycle and Firestore TTL run
+asynchronously after eligibility, so they are cost-control retention rules, not
+exact deletion-time guarantees. A later scheduled cleanup stage is required for
+strict deadlines. No GPU or AI worker is created.
+
+Do not run `apply` from a Git worktree that does not contain the existing local
+Terraform state. Merge the reviewed branch first, then create and inspect the
+saved plan from the primary checkout that owns `terraform.tfstate`.
 
 ## iOS Simulator Connection
 

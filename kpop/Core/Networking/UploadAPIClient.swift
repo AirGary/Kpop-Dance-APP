@@ -5,6 +5,7 @@ nonisolated enum UploadAPIError: Error, Equatable, Sendable {
     case transport
     case encoding
     case decoding
+    case resumableSessionTerminated
     case backend(status: Int, code: String, message: String)
 }
 
@@ -36,12 +37,18 @@ nonisolated struct UploadCreateInput: Encodable, Equatable, Sendable {
     }
 }
 
+nonisolated enum UploadProtocolKind: String, Decodable, Equatable, Sendable {
+    case stageLab = "stage-lab"
+    case gcsResumable = "gcs-resumable"
+}
+
 nonisolated struct UploadSession: Decodable, Equatable, Sendable {
     let uploadID: UUID
     let uploadURL: URL
     let expiresAt: Date
     let chunkSize: Int
     let offset: Int64
+    let uploadProtocol: UploadProtocolKind
 
     private enum CodingKeys: String, CodingKey {
         case uploadID = "uploadId"
@@ -49,6 +56,7 @@ nonisolated struct UploadSession: Decodable, Equatable, Sendable {
         case expiresAt
         case chunkSize
         case offset
+        case uploadProtocol
     }
 }
 
@@ -88,18 +96,40 @@ nonisolated struct UploadAPIClient: Sendable {
         }
     }
 
-    func offset(uploadURL: URL) async throws -> Int64 {
+    func offset(
+        uploadURL: URL,
+        `protocol` uploadProtocol: UploadProtocolKind,
+        total: Int64
+    ) async throws -> Int64 {
         var request = URLRequest(url: uploadURL)
-        request.httpMethod = "HEAD"
-        let (_, response) = try await perform(request, successCodes: [204])
-        return try uploadOffset(from: response)
+        switch uploadProtocol {
+        case .stageLab:
+            request.httpMethod = "HEAD"
+            let (_, response) = try await perform(request, successCodes: [204])
+            return try stageLabOffset(from: response)
+        case .gcsResumable:
+            request.httpMethod = "PUT"
+            request.httpBody = Data()
+            request.setValue("bytes */\(total)", forHTTPHeaderField: "Content-Range")
+            let (_, response) = try await perform(
+                request,
+                successCodes: [200, 201, 308],
+                mapsTerminatedResumableSession: true
+            )
+            if response.statusCode == 200 || response.statusCode == 201 {
+                return total
+            }
+            return try gcsOffset(from: response)
+        }
     }
 
     func putChunk(
         uploadURL: URL,
+        `protocol` uploadProtocol: UploadProtocolKind,
         data: Data,
         start: Int64,
-        total: Int64
+        total: Int64,
+        crc32c: String?
     ) async throws -> UploadChunkResult {
         guard !data.isEmpty else {
             throw UploadAPIError.invalidResponse
@@ -109,10 +139,28 @@ nonisolated struct UploadAPIClient: Sendable {
         request.httpBody = data
         let end = start + Int64(data.count) - 1
         request.setValue("bytes \(start)-\(end)/\(total)", forHTTPHeaderField: "Content-Range")
-        let (_, response) = try await perform(request, successCodes: [201, 308])
+        if uploadProtocol == .gcsResumable, end + 1 == total {
+            guard let crc32c, !crc32c.isEmpty else {
+                throw UploadAPIError.invalidResponse
+            }
+            request.setValue("crc32c=\(crc32c)", forHTTPHeaderField: "X-Goog-Hash")
+        }
+        let successCodes: Set<Int> = uploadProtocol == .stageLab
+            ? [201, 308]
+            : [200, 201, 308]
+        let (_, response) = try await perform(
+            request,
+            successCodes: successCodes,
+            mapsTerminatedResumableSession: uploadProtocol == .gcsResumable
+        )
+        let isComplete = uploadProtocol == .stageLab
+            ? response.statusCode == 201
+            : response.statusCode == 200 || response.statusCode == 201
         return UploadChunkResult(
-            offset: try uploadOffset(from: response),
-            isComplete: response.statusCode == 201
+            offset: isComplete
+                ? total
+                : try uploadOffset(from: response, protocol: uploadProtocol),
+            isComplete: isComplete
         )
     }
 
@@ -133,9 +181,21 @@ nonisolated struct UploadAPIClient: Sendable {
         }
     }
 
+    func abandon(uploadID: UUID) async throws {
+        var request = URLRequest(
+            url: configuration.baseURL.appending(
+                path: "v1/uploads/\(uploadID.uuidString)"
+            )
+        )
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        _ = try await perform(request, successCodes: [204])
+    }
+
     private func perform(
         _ request: URLRequest,
-        successCodes: Set<Int>
+        successCodes: Set<Int>,
+        mapsTerminatedResumableSession: Bool = false
     ) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
@@ -150,6 +210,11 @@ nonisolated struct UploadAPIClient: Sendable {
             throw UploadAPIError.invalidResponse
         }
         guard successCodes.contains(httpResponse.statusCode) else {
+            if mapsTerminatedResumableSession,
+               (400...499).contains(httpResponse.statusCode),
+               ![408, 429].contains(httpResponse.statusCode) {
+                throw UploadAPIError.resumableSessionTerminated
+            }
             guard let envelope = try? JSONDecoder().decode(UploadAPIErrorEnvelope.self, from: data) else {
                 throw UploadAPIError.invalidResponse
             }
@@ -162,7 +227,19 @@ nonisolated struct UploadAPIClient: Sendable {
         return (data, httpResponse)
     }
 
-    private func uploadOffset(from response: HTTPURLResponse) throws -> Int64 {
+    private func uploadOffset(
+        from response: HTTPURLResponse,
+        protocol uploadProtocol: UploadProtocolKind
+    ) throws -> Int64 {
+        switch uploadProtocol {
+        case .stageLab:
+            return try stageLabOffset(from: response)
+        case .gcsResumable:
+            return try gcsOffset(from: response)
+        }
+    }
+
+    private func stageLabOffset(from response: HTTPURLResponse) throws -> Int64 {
         guard
             let value = response.value(forHTTPHeaderField: "Upload-Offset"),
             let offset = Int64(value),
@@ -171,6 +248,21 @@ nonisolated struct UploadAPIClient: Sendable {
             throw UploadAPIError.invalidResponse
         }
         return offset
+    }
+
+    private func gcsOffset(from response: HTTPURLResponse) throws -> Int64 {
+        guard let value = response.value(forHTTPHeaderField: "Range") else {
+            return 0
+        }
+        let prefix = "bytes=0-"
+        guard
+            value.hasPrefix(prefix),
+            let lastByte = Int64(value.dropFirst(prefix.count)),
+            lastByte >= 0
+        else {
+            throw UploadAPIError.invalidResponse
+        }
+        return lastByte + 1
     }
 
     private static var decoder: JSONDecoder {

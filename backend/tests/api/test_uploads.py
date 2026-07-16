@@ -33,6 +33,7 @@ def test_upload_resume_and_complete(client, auth_headers) -> None:
     payload = created.json()
     assert payload["chunkSize"] == 5_242_880
     assert payload["offset"] == 0
+    assert payload["uploadProtocol"] == "stage-lab"
     upload_url = payload["uploadUrl"]
 
     first = client.put(
@@ -111,7 +112,6 @@ def test_create_and_complete_require_authentication(client, auth_headers) -> Non
         headers={"Idempotency-Key": "complete"},
     )
     assert completion.status_code == 401
-
 
 def test_invalid_token_and_unknown_upload_share_safe_error(client, auth_headers) -> None:
     created = create_upload(client, auth_headers, b"abc")

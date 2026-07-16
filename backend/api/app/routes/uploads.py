@@ -13,6 +13,7 @@ from api.app.schemas.jobs import JobResponse
 from api.app.schemas.uploads import CreateUploadRequest, UploadSessionResponse
 from api.app.services.upload_service import (
     ChecksumMismatchError,
+    UploadCompletionInProgressError,
     UploadIncompleteError,
     UploadNotFoundError,
     UploadOffsetConflictError,
@@ -48,6 +49,8 @@ def map_upload_error(error: Exception) -> APIError:
         return APIError(409, error.code, "Upload offset does not match.")
     if isinstance(error, UploadIncompleteError):
         return APIError(409, error.code, "Upload is incomplete.")
+    if isinstance(error, UploadCompletionInProgressError):
+        return APIError(409, error.code, "Upload completion is already in progress.")
     if isinstance(error, ChecksumMismatchError):
         return APIError(422, error.code, "Upload validation failed.")
     if isinstance(error, UploadRangeError):
@@ -80,15 +83,24 @@ async def create_upload(
     except (UploadRangeError, OSError) as error:
         raise map_upload_error(error) from error
 
-    content_url = request.url_for("put_upload_content", upload_id=str(result.session.id))
-    signed_url = content_url.include_query_params(token=result.token)
+    if result.upload_url is None:
+        content_url = request.url_for(
+            "put_upload_content",
+            upload_id=str(result.session.id),
+        )
+        upload_url = str(content_url.include_query_params(token=result.token))
+        upload_protocol = "stage-lab"
+    else:
+        upload_url = result.upload_url
+        upload_protocol = "gcs-resumable"
     response.status_code = 201 if result.created else 200
     return UploadSessionResponse(
         upload_id=result.session.id,
-        upload_url=str(signed_url),
+        upload_url=upload_url,
         expires_at=result.session.expires_at,
         chunk_size=request.app.state.container.upload_service.CHUNK_SIZE,
         offset=result.session.offset,
+        upload_protocol=upload_protocol,
     )
 
 
@@ -158,9 +170,26 @@ async def complete_upload(
     except (
         UploadNotFoundError,
         UploadIncompleteError,
+        UploadCompletionInProgressError,
         ChecksumMismatchError,
         OSError,
     ) as error:
         raise map_upload_error(error) from error
     response.status_code = 201 if result.created else 200
     return result.job
+
+
+@router.delete("/{upload_id}", status_code=204)
+async def abandon_upload(
+    upload_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(authenticated_user)],
+    request: Request,
+) -> Response:
+    try:
+        await request.app.state.container.upload_service.abandon(
+            user.user_id,
+            upload_id,
+        )
+    except (UploadNotFoundError, OSError) as error:
+        raise map_upload_error(error) from error
+    return Response(status_code=204)

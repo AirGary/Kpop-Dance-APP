@@ -18,3 +18,13 @@ variable "container_image" {
     error_message = "container_image must use an immutable sha256 digest."
   }
 }
+
+variable "source_bucket_name" {
+  description = "Globally unique private bucket for source videos retained up to one day."
+  type        = string
+}
+
+variable "result_bucket_name" {
+  description = "Globally unique private bucket for analysis packages retained up to seven days."
+  type        = string
+}

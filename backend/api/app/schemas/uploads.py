@@ -29,3 +29,6 @@ class UploadSessionResponse(BaseModel):
     expires_at: datetime = Field(alias="expiresAt")
     chunk_size: int = Field(alias="chunkSize")
     offset: int = Field(ge=0)
+    upload_protocol: Literal["stage-lab", "gcs-resumable"] = Field(
+        alias="uploadProtocol"
+    )

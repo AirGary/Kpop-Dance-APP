@@ -1,28 +1,3 @@
-resource "google_artifact_registry_repository" "api" {
-  project                = var.project_id
-  location               = var.region
-  repository_id          = "stage-lab-api"
-  format                 = "DOCKER"
-  description            = "Stage Lab API container images"
-  cleanup_policy_dry_run = false
-
-  cleanup_policies {
-    id     = "delete-untagged-after-seven-days"
-    action = "DELETE"
-
-    condition {
-      tag_state  = "UNTAGGED"
-      older_than = "604800s"
-    }
-  }
-}
-
-resource "google_service_account" "api" {
-  project      = var.project_id
-  account_id   = "stage-lab-api"
-  display_name = "Stage Lab API"
-}
-
 resource "google_cloud_run_v2_service" "api" {
   project  = var.project_id
   location = var.region
@@ -32,7 +7,7 @@ resource "google_cloud_run_v2_service" "api" {
   ingress             = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account                  = google_service_account.api.email
+    service_account                  = var.api_service_account_email
     timeout                          = "30s"
     max_instance_request_concurrency = 20
 
@@ -46,7 +21,22 @@ resource "google_cloud_run_v2_service" "api" {
 
       env {
         name  = "APP_ENVIRONMENT"
-        value = "cloud-bootstrap"
+        value = "cloud"
+      }
+
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
+      }
+
+      env {
+        name  = "SOURCE_BUCKET_NAME"
+        value = var.source_bucket
+      }
+
+      env {
+        name  = "RESULT_BUCKET_NAME"
+        value = var.result_bucket
       }
 
       resources {

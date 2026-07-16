@@ -7,3 +7,8 @@ variable "location" {
   description = "Firestore regional location."
   type        = string
 }
+
+variable "api_service_account_email" {
+  description = "Cloud Run API service account granted Firestore data access."
+  type        = string
+}

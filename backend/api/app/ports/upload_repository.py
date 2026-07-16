@@ -17,6 +17,10 @@ class UploadSession:
     offset: int
     expires_at: datetime
     completed_job_id: UUID | None = None
+    upload_url: str | None = None
+    state: str = "active"
+    completion_claim_id: str | None = None
+    completion_claim_expires_at: datetime | None = None
 
 
 class UploadIdempotencyConflictError(Exception):
@@ -32,6 +36,12 @@ class UploadRepository(Protocol):
         self,
         owner_id: str,
         idempotency_key: str,
+    ) -> UploadSession | None: ...
+
+    async def find_completed(
+        self,
+        owner_id: str,
+        job_id: UUID,
     ) -> UploadSession | None: ...
 
     async def update_offset(
@@ -51,7 +61,30 @@ class UploadRepository(Protocol):
         self,
         upload_id: UUID,
         job_id: UUID,
-    ) -> UploadSession: ...
+        claim_id: str,
+    ) -> UploadSession | None: ...
+
+    async def claim_completion(
+        self,
+        upload_id: UUID,
+        owner_id: str,
+        instant: datetime,
+        claim_id: str,
+    ) -> UploadSession | None: ...
+
+    async def release_completion(self, upload_id: UUID, claim_id: str) -> None: ...
+
+    async def claim_expired(
+        self,
+        upload_id: UUID,
+        instant: datetime,
+    ) -> UploadSession | None: ...
+
+    async def claim_deletion(
+        self,
+        upload_id: UUID,
+        owner_id: str,
+    ) -> UploadSession | None: ...
 
     async def delete(self, upload_id: UUID) -> None: ...
 

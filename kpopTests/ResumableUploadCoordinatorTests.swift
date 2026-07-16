@@ -120,10 +120,105 @@ struct ResumableUploadCoordinatorTests {
         #expect(fixture.store.exists(projectID: projectID))
     }
 
+    @Test
+    func terminatedGCSSessionIsAbandonedAndRecreatedOnce() async throws {
+        let fixture = try Fixture(projectID: projectID, stagingContent: Data("abcdef".utf8))
+        defer { fixture.remove() }
+        let replacementUploadID = UUID(uuidString: "423E4567-E89B-12D3-A456-426614174000")!
+        let recorder = TerminatedSessionSequence(
+            firstUploadID: uploadID,
+            secondUploadID: replacementUploadID,
+            jobID: jobID,
+            projectID: projectID
+        )
+        let coordinator = ResumableUploadCoordinator(
+            apiProvider: { _ in
+                UploadAPIClient(
+                    configuration: Self.configuration,
+                    transport: HTTPTransport { request in try await recorder.send(request) }
+                )
+            },
+            compressor: VideoCompressionService { _, _ in },
+            staging: fixture.store
+        )
+
+        let completion = try await coordinator.run(
+            projectID: projectID,
+            sourceFingerprint: "project:\(projectID.uuidString.lowercased())",
+            durationSeconds: 90,
+            sourceURL: fixture.sourceURL,
+            allowsCellular: false,
+            onProgress: { _ in }
+        )
+
+        #expect(completion.uploadID == replacementUploadID)
+        #expect(await recorder.createCount == 2)
+        #expect(await recorder.abandonedUploadIDs == [uploadID])
+    }
+
     private static let configuration = JobsAPIConfiguration(
         baseURL: URL(string: "http://127.0.0.1:8000")!,
         bearerToken: "dev-user-a"
     )
+}
+
+private actor TerminatedSessionSequence {
+    let firstUploadID: UUID
+    let secondUploadID: UUID
+    let jobID: UUID
+    let projectID: UUID
+    private(set) var createCount = 0
+    private(set) var abandonedUploadIDs: [UUID] = []
+
+    init(firstUploadID: UUID, secondUploadID: UUID, jobID: UUID, projectID: UUID) {
+        self.firstUploadID = firstUploadID
+        self.secondUploadID = secondUploadID
+        self.jobID = jobID
+        self.projectID = projectID
+    }
+
+    func send(_ request: URLRequest) throws -> (Data, URLResponse) {
+        if request.httpMethod == "POST", request.url?.path == "/v1/uploads" {
+            createCount += 1
+            let id = createCount == 1 ? firstUploadID : secondUploadID
+            let protocolName = createCount == 1 ? "gcs-resumable" : "stage-lab"
+            let url = createCount == 1
+                ? "https://storage.example/upload?session=dead"
+                : "http://127.0.0.1:8000/upload?token=fresh"
+            let body = Data(#"{"uploadId":"\#(id.uuidString.lowercased())","uploadUrl":"\#(url)","expiresAt":"2026-07-14T05:00:00Z","chunkSize":5242880,"offset":0,"uploadProtocol":"\#(protocolName)"}"#.utf8)
+            return (body, response(status: 201, request: request))
+        }
+        if request.httpMethod == "PUT", request.url?.host == "storage.example" {
+            return (Data(), response(status: 410, request: request))
+        }
+        if request.httpMethod == "DELETE" {
+            if let id = request.url?.lastPathComponent, let uploadID = UUID(uuidString: id) {
+                abandonedUploadIDs.append(uploadID)
+            }
+            return (Data(), response(status: 204, request: request))
+        }
+        if request.httpMethod == "HEAD" {
+            return (Data(), response(status: 204, request: request, headers: ["Upload-Offset": "0"]))
+        }
+        if request.httpMethod == "PUT" {
+            return (Data(), response(status: 201, request: request, headers: ["Upload-Offset": "6"]))
+        }
+        let body = Data(#"{"id":"\#(jobID.uuidString.lowercased())","projectId":"\#(projectID.uuidString.lowercased())","state":"draft","progress":0,"errorCode":null,"createdAt":"2026-07-13T05:00:00Z","updatedAt":"2026-07-13T05:00:00Z"}"#.utf8)
+        return (body, response(status: 201, request: request))
+    }
+
+    private func response(
+        status: Int,
+        request: URLRequest,
+        headers: [String: String]? = nil
+    ) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: request.url!,
+            statusCode: status,
+            httpVersion: nil,
+            headerFields: headers
+        )!
+    }
 }
 
 private struct Fixture {
@@ -193,7 +288,7 @@ private actor RequestSequence {
     func send(_ request: URLRequest) throws -> (Data, URLResponse) {
         if request.httpMethod == "POST", request.url?.path == "/v1/uploads" {
             createKeys.append(request.value(forHTTPHeaderField: "Idempotency-Key") ?? "")
-            let body = Data(#"{"uploadId":"\#(uploadID.uuidString.lowercased())","uploadUrl":"http://127.0.0.1:8000/upload?token=opaque","expiresAt":"2026-07-14T05:00:00Z","chunkSize":5242880,"offset":0}"#.utf8)
+            let body = Data(#"{"uploadId":"\#(uploadID.uuidString.lowercased())","uploadUrl":"http://127.0.0.1:8000/upload?token=opaque","expiresAt":"2026-07-14T05:00:00Z","chunkSize":5242880,"offset":0,"uploadProtocol":"stage-lab"}"#.utf8)
             return (body, response(status: 201, request: request))
         }
         if request.httpMethod == "HEAD" {

@@ -82,8 +82,9 @@ nonisolated struct ResumableUploadCoordinator: Sendable {
         let digest = try staging.sha256(projectID: projectID)
         let keySuffix = projectID.uuidString.lowercased()
         let api = apiProvider(allowsCellular)
-        let session = try await api.create(
-            UploadCreateInput(
+        return try await uploadPreparedFile(
+            api: api,
+            input: UploadCreateInput(
                 projectID: projectID,
                 sourceFingerprint: sourceFingerprint,
                 durationSeconds: durationSeconds,
@@ -91,54 +92,98 @@ nonisolated struct ResumableUploadCoordinator: Sendable {
                 mimeType: "video/mp4",
                 sha256: digest
             ),
+            projectID: projectID,
+            keySuffix: keySuffix,
+            totalBytes: totalBytes,
+            allowsSessionReplacement: true,
+            onProgress: onProgress
+        )
+    }
+
+    private func uploadPreparedFile(
+        api: UploadAPIClient,
+        input: UploadCreateInput,
+        projectID: UUID,
+        keySuffix: String,
+        totalBytes: Int64,
+        allowsSessionReplacement: Bool,
+        onProgress: @escaping @Sendable (UploadProgress) async -> Void
+    ) async throws -> UploadCompletion {
+        let session = try await api.create(
+            input,
             idempotencyKey: "upload-\(keySuffix)"
         )
-        var confirmedBytes = try await api.offset(uploadURL: session.uploadURL)
-        guard confirmedBytes >= 0, confirmedBytes <= totalBytes else {
-            throw ResumableUploadError.invalidServerOffset
-        }
-
-        await onProgress(.uploading(
-            uploadID: session.uploadID,
-            confirmedBytes: confirmedBytes,
-            totalBytes: totalBytes,
-            expiresAt: session.expiresAt
-        ))
-        while confirmedBytes < totalBytes {
-            let remaining = totalBytes - confirmedBytes
-            let requestedCount = Int(min(Int64(session.chunkSize), remaining))
-            let chunk = try staging.readChunk(
-                projectID: projectID,
-                offset: confirmedBytes,
-                count: requestedCount
-            )
-            guard chunk.count == requestedCount else {
-                throw UploadStagingError.invalidByteCount
-            }
-            let result = try await api.putChunk(
+        do {
+            var confirmedBytes = try await api.offset(
                 uploadURL: session.uploadURL,
-                data: chunk,
-                start: confirmedBytes,
+                protocol: session.uploadProtocol,
                 total: totalBytes
             )
-            guard result.offset > confirmedBytes, result.offset <= totalBytes else {
-                throw ResumableUploadError.stalledUpload
+            guard confirmedBytes >= 0, confirmedBytes <= totalBytes else {
+                throw ResumableUploadError.invalidServerOffset
             }
-            confirmedBytes = result.offset
+            let crc32c: String? = if session.uploadProtocol == .gcsResumable,
+                                     confirmedBytes < totalBytes {
+                try CRC32C.base64EncodedChecksum(fileURL: staging.fileURL(projectID: projectID))
+            } else {
+                nil
+            }
+
             await onProgress(.uploading(
                 uploadID: session.uploadID,
                 confirmedBytes: confirmedBytes,
                 totalBytes: totalBytes,
                 expiresAt: session.expiresAt
             ))
-        }
+            while confirmedBytes < totalBytes {
+                let remaining = totalBytes - confirmedBytes
+                let requestedCount = Int(min(Int64(session.chunkSize), remaining))
+                let chunk = try staging.readChunk(
+                    projectID: projectID,
+                    offset: confirmedBytes,
+                    count: requestedCount
+                )
+                guard chunk.count == requestedCount else {
+                    throw UploadStagingError.invalidByteCount
+                }
+                let result = try await api.putChunk(
+                    uploadURL: session.uploadURL,
+                    protocol: session.uploadProtocol,
+                    data: chunk,
+                    start: confirmedBytes,
+                    total: totalBytes,
+                    crc32c: crc32c
+                )
+                guard result.offset > confirmedBytes, result.offset <= totalBytes else {
+                    throw ResumableUploadError.stalledUpload
+                }
+                confirmedBytes = result.offset
+                await onProgress(.uploading(
+                    uploadID: session.uploadID,
+                    confirmedBytes: confirmedBytes,
+                    totalBytes: totalBytes,
+                    expiresAt: session.expiresAt
+                ))
+            }
 
-        await onProgress(.validating)
-        let job = try await api.complete(
-            uploadID: session.uploadID,
-            idempotencyKey: "upload-complete-\(keySuffix)"
-        )
-        try staging.delete(projectID: projectID)
-        return UploadCompletion(uploadID: session.uploadID, jobID: job.id)
+            await onProgress(.validating)
+            let job = try await api.complete(
+                uploadID: session.uploadID,
+                idempotencyKey: "upload-complete-\(keySuffix)"
+            )
+            try staging.delete(projectID: projectID)
+            return UploadCompletion(uploadID: session.uploadID, jobID: job.id)
+        } catch UploadAPIError.resumableSessionTerminated where allowsSessionReplacement {
+            try await api.abandon(uploadID: session.uploadID)
+            return try await uploadPreparedFile(
+                api: api,
+                input: input,
+                projectID: projectID,
+                keySuffix: keySuffix,
+                totalBytes: totalBytes,
+                allowsSessionReplacement: false,
+                onProgress: onProgress
+            )
+        }
     }
 }

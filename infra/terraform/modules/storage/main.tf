@@ -1,9 +1,3 @@
-resource "google_service_account" "signer" {
-  project      = var.project_id
-  account_id   = "stage-lab-signer"
-  display_name = "Stage Lab signed URL service"
-}
-
 resource "google_storage_bucket" "source" {
   project                     = var.project_id
   name                        = var.source_bucket_name
@@ -11,6 +5,10 @@ resource "google_storage_bucket" "source" {
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
   force_destroy               = false
+
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
 
   lifecycle_rule {
     action {
@@ -22,6 +20,12 @@ resource "google_storage_bucket" "source" {
   }
 }
 
+resource "google_storage_bucket_iam_member" "source_api" {
+  bucket = google_storage_bucket.source.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${var.api_service_account_email}"
+}
+
 resource "google_storage_bucket" "result" {
   project                     = var.project_id
   name                        = var.result_bucket_name
@@ -29,6 +33,10 @@ resource "google_storage_bucket" "result" {
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
   force_destroy               = false
+
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
 
   lifecycle_rule {
     action {
@@ -38,4 +46,10 @@ resource "google_storage_bucket" "result" {
       age = 7
     }
   }
+}
+
+resource "google_storage_bucket_iam_member" "result_api" {
+  bucket = google_storage_bucket.result.name
+  role   = "roles/storage.objectUser"
+  member = "serviceAccount:${var.api_service_account_email}"
 }
