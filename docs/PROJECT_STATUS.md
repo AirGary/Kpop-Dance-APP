@@ -2,7 +2,7 @@
 
 ## 项目名称与目标
 
-Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是先完成一个真实上传、真实云端处理、可恢复且严格控制成本的 AI Demo，再逐阶段扩展为可上架商品。
+Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优先级是先完成一个真实人物检测、目标追踪、姿态与动作分解的可体验 AI Demo，再逐阶段迁移云端并扩展为可上架商品。
 
 ## 当前可运行状态
 
@@ -15,20 +15,24 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 尚未开始。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环已完成产品设计确认，实施尚未开始。**
 
-已部署 Firebase Authentication、Firestore、两个私有 Cloud Storage Bucket、Cloud Run `cloud` 模式和最小权限运行账号。Terraform 已收敛为零漂移，两个真实 Firebase 临时身份的所有权隔离 smoke 已通过，测试用户、测试任务和临时签名权限均已清理。用户已于 2026-07-16 正式验收 Stage 5B；Stage 6 需完成阶段开始确认后才会实施。
+用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
 ### 阶段范围
 
-- 包含：Firebase ID Token 验证适配器、Firestore 元数据、私有 GCS 断点续传、Cloud Run API、生命周期与成本门禁。
-- 不包含：Sign in with Apple 的 iOS 接入、AI Worker、GPU、音乐/动作模型、付费、APNs、CloudKit。
+- 包含：本地 FFprobe/FFmpeg、RTMDet、ByteTrack、RTMPose、基础节拍、真实候选舞者、目标聚光、可开关骨架、动作时间轴、结果包校验与离线练习。
+- 不包含：Sign in with Apple 或其他用户登录、云端 GPU、音乐语义段落、大模型教学文案、付费、APNs、CloudKit。
+- 首轮样本：用户已有的 `82MAJOR Trophy` 视频；通过后再扩大到 3 条和 20 条基准视频。
+- 设计文档：`docs/superpowers/specs/2026-07-16-stage-6-local-real-ai-vertical-slice-design.md`。
 
 ### 阶段开始确认记录
 
 - 2026-07-16：用户明确确认“完成并部署云端基础”。
 - 成本边界：Cloud Run 最小实例 0、最大实例 1、1 CPU、512 MiB；不创建 GPU；预算 JPY 1,000/月，仅发送告警，不是硬停机上限。
 - 2026-07-16：用户确认采用低成本 Firebase Authentication 初始化方案；不开启邮箱、手机或匿名登录，仅使用两个临时 Custom Auth 身份完成隔离测试。Identity Platform 初始化不可删除，已采用 Terraform `prevent_destroy` 防止误操作。
+- 2026-07-16：用户要求测试版 Demo 暂不加入账号登录，把真实舞蹈视频 AI 分析和动作分解成品形态设为最高优先级。
+- 2026-07-16：用户确认本地 Worker 优先方案、单视频验收、两阶段分析、聚光 + 可开关骨架 + 时间轴、基础节拍范围、结果格式、错误恢复与回退边界。
 
 ## 已完成阶段
 
@@ -41,6 +45,20 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - Stage 5B：Firebase Auth、Firestore、私有 Storage、真实双身份隔离与成本门禁。
 
 ## 最近完成任务
+
+### Task：Stage 6 本地真实 AI 闭环产品设计（待书面规格验收）
+
+**目标：** 固定首个真实 AI 成品范围与实施边界，避免账号和云部署继续阻塞 AI 验证。
+
+- [x] 确认不在测试版加入面向用户的账号登录。
+- [x] 确认先在 Mac 本地运行真实 AI Worker，再迁移 Google Cloud。
+- [x] 确认两阶段流程：真实候选舞者后再分析一名目标舞者。
+- [x] 确认成品播放器为聚光跟随、可开关骨架和动作时间轴。
+- [x] 确认首版只做 BPM、节拍和强拍，不做音乐语义段落。
+- [x] 确认首条 `82MAJOR Trophy` 视频的验收指标与回退方案。
+- [ ] 用户验收仓库内书面设计规格。
+- [ ] 编写并验收实施计划。
+- [ ] 开始测试先行实施。
 
 ### Task：完成 Stage 5B 部署后收敛与验证（已验收）
 
@@ -123,15 +141,18 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - **不可逆配置，已确认：** Identity Platform 项目配置初始化后不能删除；Terraform 使用 `prevent_destroy`，且本阶段不开放 Email、Phone、Anonymous 登录。
 - **产品缺口：** iOS 尚未接入 Sign in with Apple 和生产 Firebase Token，因此当前 App 不能完成正式云端登录上传流程。
 - **功能缺口：** 没有真实 AI 分析，当前仅完成云端数据基础。
+- **阶段变更：** 用户登录与正式云上传联调已延期；Stage 6 先解决真实 AI 成品闭环。
+- **模型风险：** RTMDet/RTMPose 在当前 Apple Silicon 环境的 MPS 算子兼容性和实际速度尚未测量，实施时必须保留 CPU 回退并记录耗时。
 - Terraform state 当前只保存在主检出目录本机；丢失会增加基础设施恢复难度，需要后续迁移到受保护的远端 state。
 
 ## 下一阶段建议
 
-下一阶段建议为 **Stage 6：iOS Firebase Authentication + Sign in with Apple + 真实云端上传联调**。开始前需确认 Apple Developer Program 账号和 App Identifier 等前置条件，并完成 Stage 6 的范围、成本、安全、测试和回退方案确认。完成 Stage 6 后，再开始第一阶段 AI：媒体预检、人数检测和候选舞者生成。
+下一步是验收 Stage 6 书面设计，然后编写测试先行的实施计划。实施顺序从媒体预检和真实候选舞者开始，之后完成目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。Sign in with Apple 延后到外部 TestFlight 或商品级用户隔离前处理。
 
 ## 阶段验收记录
 
 - 2026-07-16：用户回复“已合并并验收 Stage 5B”，Stage 5B 正式标记为“已完成”。
+- 2026-07-16：用户逐项确认 Stage 6 产品设计；仓库书面规格仍待用户验收。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -140,4 +161,4 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。
 - Firebase Authentication 初始化提交：`420493d`，PR #3 合并提交 `59dec60`。
 - Stage 5B 真实云验证记录提交：`033db4e`，PR #4 合并提交 `d890ecf`。
-- 当前工作分支：`codex/stage5b-acceptance-record`（仅记录用户验收结果）。
+- 当前工作分支：`codex/stage6-real-ai-design`（Stage 6 设计与进度记录）。
