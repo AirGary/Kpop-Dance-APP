@@ -85,6 +85,43 @@ This installs local development dependencies, runs all backend tests, checks the
 app import, and checks Terraform formatting only when Terraform is already
 installed. It never runs `terraform apply` and never creates cloud resources.
 
+## Stage 6 Local AI Runtime
+
+The real-analysis worker is isolated from the FastAPI and Cloud Run environment
+under `backend/workers/analysis`. It requires Homebrew Python 3.11 and FFmpeg:
+
+```bash
+brew install python@3.11 ffmpeg
+./scripts/bootstrap-local-ai.sh
+./scripts/verify-local-ai.sh
+```
+
+Bootstrap validates `dependency-licenses.json`, downloads the 57 exact macOS
+arm64 artifacts in `requirements-macos-arm64.lock` with required SHA-256
+hashes, then installs only from that local package directory. It creates only
+ignored artifacts under `.local-ai/`: a Python 3.11 virtual environment, model
+files, a path-free `requirements.lock`, and the runtime-capability report. It
+does not install AI packages into `backend/.venv`, read a user video, contact
+Google Cloud, or create paid resources.
+
+The verified macOS 27 baseline is Python 3.11.15, FFmpeg 8.1.2, PyTorch 2.13.0,
+MMCV 2.1.0, MMDetection 3.3.0, and MMPose 1.3.2. RTMDet-m and RTMPose-m use
+official OpenMMLab checkpoints whose complete SHA-256 values are recorded in
+`model-manifest.json`. The probe first validates these hashes, then runs both
+models against a generated frame. Both checkpoint hashes are revalidated
+immediately before loading. MPS is accepted only when both probes pass;
+otherwise the worker performs one CPU probe and records the result in
+`.local-ai/runtime-capabilities.json`. A failed probe removes the previous
+capability report rather than leaving stale `ready=true` evidence.
+
+The model manifest rejects every license except the reviewed Apache-2.0
+baseline before any AI dependency is installed. Package metadata and shipped
+license files were reviewed for this technical Demo; the `xtcocotools` wheel
+includes MIT and BSD text even though its metadata leaves the license field
+empty. This evidence is not a complete commercial legal opinion. Training-data
+provenance and final transitive notices remain a separate gate before
+distribution; local technical approval is not App Store legal approval.
+
 ## Local Production Container Check
 
 Build the same Linux architecture used by Cloud Run:
