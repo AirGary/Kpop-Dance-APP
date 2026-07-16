@@ -59,7 +59,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [x] 核对代码、权重来源、SHA-256 与许可证文件。
 - [x] 运行真实单帧推理门禁并记录设备、耗时和版本。
 - [x] 完整回归和文档更新。
-- [ ] 提交、推送与 GitHub PR。
+- [x] 提交并推送 GitHub 分支。
+- [ ] 创建 GitHub PR（连接器写权限 403，需用户通过浏览器创建）。
 
 实际结果：Python 3.11.15、FFmpeg/FFprobe 8.1.2、PyTorch 2.13.0、MMCV 2.1.0、MMDetection 3.3.0 和 MMPose 1.3.2 已在 macOS 27 arm64 隔离环境安装。RTMDet-m 与 RTMPose-m 对合成单帧真实推理均通过；MPS 未通过整组探针，按设计仅回退一次 CPU。首次冷探针 28.553 秒；两份 checkpoint 均在每次模型加载前重新校验 SHA-256。提交前审查发现的许可证拒绝规则、精确安装约束、空检测结果和过期能力报告问题均已增加回归保护。
 
@@ -195,4 +196,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 5B 真实云验证记录提交：`033db4e`，PR #4 合并提交 `d890ecf`。
 - Stage 6 设计合并提交：`ff2350d`。
 - Stage 6 实施计划合并提交：`b0d5794`。
+- Stage 6 Task 1 实现提交：`49c3f52`，已推送 `codex/stage6-task1-runtime`；PR 待浏览器创建。
 - 当前工作分支：`codex/stage6-task1-runtime`（Task 1 运行环境与模型门禁）。
