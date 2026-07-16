@@ -61,6 +61,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - [x] 在 Terraform 中加入 Firebase Authentication 初始化配置，并显式关闭 Email、Phone、Anonymous 登录。
 - [x] 审查并应用只新增 Identity Platform 配置的 Terraform plan：`1 added / 0 changed / 0 destroyed`。
 - [x] 显式设置 Terraform quota project，并锁定 `multi_tenant.allow_tenants=false`；部署后 plan 为 `No changes`。
+- [x] Auth 初始化配置提交 `420493d` 已推送，等待用户合并后从干净 `main` 执行 smoke。
 - [ ] 创建两个临时 Custom Auth 测试身份。
 - [ ] 使用两个不同 Firebase ID Token 运行 `cloud-bootstrap.sh smoke`。
 - [ ] 删除临时测试用户并确认没有残留测试任务。
@@ -135,4 +136,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前目标是
 - 最后更新：2026-07-16（Asia/Tokyo）。
 - 已部署 Git 提交：`21161a288e73ebc40a5716b01db1d1f8210037a7`。
 - Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。
+- Firebase Authentication 初始化提交：`420493d`（已推送、待合并）。
 - 当前工作分支：`codex/stage5b-firebase-auth-smoke`（Auth 初始化已部署，代码待合并后执行双身份 smoke）。
