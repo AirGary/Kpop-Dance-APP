@@ -10,6 +10,7 @@ xcuserdata/
 .trae/
 .superpowers/
 .worktrees/
+.local-ai/
 
 # Python
 backend/.venv/

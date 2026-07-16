@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环规格已验收，实施计划待用户验收。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 运行环境与模型门禁待验收。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -35,6 +35,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-16：用户确认本地 Worker 优先方案、单视频验收、两阶段分析、聚光 + 可开关骨架 + 时间轴、基础节拍范围、结果格式、错误恢复与回退边界。
 - 2026-07-16：用户确认并合并 Stage 6 书面规格，允许进入实施计划阶段；尚未安装 AI 依赖或修改产品代码。
 - 2026-07-16：用户确认首版模型基线为 RTMDet-m + ByteTrack + RTMPose-m；接口必须可替换，Analysis Package 保持稳定，实施前核对代码与权重商业许可证，首版不使用 VideoMAE 或视频大模型替代逐帧追踪。
+- 2026-07-16：用户回复“已合并并确认实施计划”，Stage 6 正式进入实施；首个执行范围仅为 Python 3.11、FFmpeg、模型来源/许可证和单帧真实推理门禁，不启用云 GPU、不改产品 UI。
 
 ## 已完成阶段
 
@@ -48,6 +49,20 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 最近完成任务
 
+### Task：Stage 6 Task 1 本地 AI 运行环境门禁（待验收）
+
+**目标：** 在不污染 Cloud Run API 依赖的前提下，验证 FFmpeg、RTMDet-m 和 RTMPose-m 至少能通过 MPS 或 CPU 完成真实单帧推理。
+
+- [x] 验证现有 backend 与 iOS 基线。
+- [x] 先写运行时与模型清单失败测试。
+- [x] 建立隔离 Python 3.11 环境与 FFmpeg 前置检查。
+- [x] 核对代码、权重来源、SHA-256 与许可证文件。
+- [x] 运行真实单帧推理门禁并记录设备、耗时和版本。
+- [x] 完整回归和文档更新。
+- [ ] 提交、推送与 GitHub PR。
+
+实际结果：Python 3.11.15、FFmpeg/FFprobe 8.1.2、PyTorch 2.13.0、MMCV 2.1.0、MMDetection 3.3.0 和 MMPose 1.3.2 已在 macOS 27 arm64 隔离环境安装。RTMDet-m 与 RTMPose-m 对合成单帧真实推理均通过；MPS 未通过整组探针，按设计仅回退一次 CPU。首次冷探针 28.553 秒；两份 checkpoint 均在每次模型加载前重新校验 SHA-256。提交前审查发现的许可证拒绝规则、精确安装约束、空检测结果和过期能力报告问题均已增加回归保护。
+
 ### Task：Stage 6 本地真实 AI 闭环产品设计（已验收）
 
 **目标：** 固定首个真实 AI 成品范围与实施边界，避免账号和云部署继续阻塞 AI 验证。
@@ -60,8 +75,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [x] 确认首条 `82MAJOR Trophy` 视频的验收指标与回退方案。
 - [x] 用户验收仓库内书面设计规格，GitHub 合并提交 `ff2350d`。
 - [x] 编写实施计划 `docs/superpowers/plans/2026-07-16-stage-6-local-real-ai-vertical-slice.md`。
-- [ ] 用户验收实施计划。
-- [ ] 开始测试先行实施。
+- [x] 用户验收实施计划。
+- [x] 开始测试先行实施。
 
 ### Task：完成 Stage 5B 部署后收敛与验证（已验收）
 
@@ -97,6 +112,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 4. App 通过私有 GCS resumable session 直接上传到 Source Bucket。
 5. Source Bucket 对象 1 天后清理；Result Bucket 对象 7 天后清理；Firestore `uploads.ttlExpiresAt` TTL 已为 `ACTIVE`。
 6. 后续 AI Worker 将读取 Source Bucket，写入 Result Bucket；App 下载 Analysis Package 后保存到本机。
+7. Stage 6 当前本地 Worker 仅读取生成的测试帧；模型、虚拟环境、锁文件和能力报告位于 Git 忽略的 `.local-ai/`，尚未读取用户舞蹈视频或接入 API。
 
 ## 技术栈与架构摘要
 
@@ -104,7 +120,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - API：Python 3.13、FastAPI、Pydantic、Firebase Admin SDK。
 - 云端：Cloud Run、Firestore、Cloud Storage、Artifact Registry、Terraform。
 - 当前容器：`sha256:3a933b0562e8aaa10b0981e12f35a90f3449b5282a60ea0019ce2b1fe3d68f58`。
-- AI 规划：FFmpeg/FFprobe、RTMDet-m、ByteTrack、RTMPose-m 和基础音乐节拍分析；尚未安装或部署。
+- 本地 AI 基线：Python 3.11.15、FFmpeg 8.1.2、PyTorch 2.13.0、MMCV 2.1.0、MMDetection 3.3.0、MMPose 1.3.2；RTMDet-m 与 RTMPose-m 单帧 CPU 推理通过，ByteTrack 与音乐分析尚未实施。
 
 ## 测试与验证记录
 
@@ -114,6 +130,15 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - `./scripts/verify-ios.sh`：iOS 单元测试、UI 冷启动、Staging 和 Release Simulator 构建通过。
 - `terraform validate` 与 `terraform fmt -check -recursive`：通过。
 - 独立部署门禁复审：P0/P1/P2 均为 0。
+
+### 2026-07-16 Stage 6 Task 1
+
+- `.local-ai/venv/bin/python -m pytest backend/workers/analysis/tests/test_runtime_probe.py -q`：26 项通过，0 失败；包含未批准模型/依赖许可证、artifact/模型篡改、空/非有限检测框、精确约束和过期能力报告保护。
+- `./scripts/bootstrap-local-ai.sh`：通过；57 个 macOS arm64 artifact 先按 `requirements-macos-arm64.lock` 强制 SHA-256 下载，再从本地目录离线安装。artifact lock SHA-256 为 `9dda16ab9a97d4b366a2557a8a02d920edcccf744d06d8b6f5d0b54eb29e4d05`；许可证清单 SHA-256 为 `b21d11d3995cdcf47c4d3c620008c6aa005b2ff763b35d84a11122f18ba935c5`。
+- `./scripts/verify-local-ai.sh`：通过；FFmpeg/FFprobe 8.1.2，RTMDet-m/RTMPose-m `detector_ready=true`、`pose_ready=true`、`device=cpu`，最终复核耗时 5.956 秒。
+- `./scripts/verify-backend.sh`：146 项通过，0 失败，1 个既有 Starlette/httpx 弃用警告；Cloud API 环境未安装 torch、MMCV、MMDetection 或 MMPose。
+- iOS 基线：单元测试、UI 冷启动、Staging 和 Release Simulator 构建通过；本 Task 未修改 iOS 产品代码。
+- 许可证：manifest 在安装前仅接受本阶段已审查的 Apache-2.0 模型；依赖 metadata/随包许可证已完成技术 Demo 审查。`xtcocotools` wheel 内 MIT/BSD 许可证 SHA-256 为 `f96addc34b360737be24174358254ae2c36ab9f757d7810cb52ef5114a25f1cc`；商品发布仍须专项法律复核与 notices 汇总。
 
 ### 2026-07-16 真实云环境
 
@@ -145,18 +170,21 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - **产品缺口：** iOS 尚未接入 Sign in with Apple 和生产 Firebase Token，因此当前 App 不能完成正式云端登录上传流程。
 - **功能缺口：** 没有真实 AI 分析，当前仅完成云端数据基础。
 - **阶段变更：** 用户登录与正式云上传联调已延期；Stage 6 先解决真实 AI 成品闭环。
-- **模型风险：** RTMDet-m/RTMPose-m 在当前 Apple Silicon 环境的 MPS 算子兼容性和实际速度尚未测量；当前默认 Python 为 3.14.6 且没有 FFmpeg，Task 1 必须先建立 Python 3.11 隔离环境、安装 FFmpeg 并验证 CPU 回退。
+- **已缓解：** RTMDet-m/RTMPose-m 已在 Apple Silicon 完成 CPU 单帧真实推理；MPS 未通过整组门禁，当前稳定设备固定为 CPU，后续性能验收不能假设 GPU 加速。
+- **商品化法律风险：** OpenMMLab 代码与 checkpoint artifact 许可证门禁通过，但当前官方检测/姿态权重的训练数据包含 COCO、Objects365 和 Body7 来源。发布商业版本前必须完成训练数据与模型权重的专项法律复核；本地技术 Demo 通过不等于 App Store 法律批准。
 - Terraform state 当前只保存在主检出目录本机；丢失会增加基础设施恢复难度，需要后续迁移到受保护的远端 state。
 
 ## 下一阶段建议
 
-下一步是用户验收 Stage 6 实施计划。验收后从 AI 运行环境与许可证硬门禁开始，再依次实施媒体预检、真实候选舞者、目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。Sign in with Apple 延后到外部 TestFlight 或商品级用户隔离前处理。
+下一步是用户验收 Stage 6 Task 1。验收后开始 Task 2：定义持久化分析状态、稳定 DTO 和 owner/job 隔离工作区；随后才进入媒体预检、真实候选舞者、目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。Sign in with Apple 延后到外部 TestFlight 或商品级用户隔离前处理。
 
 ## 阶段验收记录
 
 - 2026-07-16：用户回复“已合并并验收 Stage 5B”，Stage 5B 正式标记为“已完成”。
 - 2026-07-16：用户逐项确认 Stage 6 产品设计；仓库书面规格仍待用户验收。
 - 2026-07-16：用户回复“已合并并确认规格”，Stage 6 书面规格正式验收，进入实施计划编写。
+- 2026-07-16：用户回复“已合并并确认实施计划”，Stage 6 开始执行 Task 1。
+- 2026-07-16：Stage 6 Task 1 完整技术门禁通过，状态更新为“待验收”；尚未开始 Task 2。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -166,4 +194,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Firebase Authentication 初始化提交：`420493d`，PR #3 合并提交 `59dec60`。
 - Stage 5B 真实云验证记录提交：`033db4e`，PR #4 合并提交 `d890ecf`。
 - Stage 6 设计合并提交：`ff2350d`。
-- 当前工作分支：`codex/stage6-implementation-plan`（Stage 6 实施计划与进度记录）。
+- Stage 6 实施计划合并提交：`b0d5794`。
+- 当前工作分支：`codex/stage6-task1-runtime`（Task 1 运行环境与模型门禁）。
