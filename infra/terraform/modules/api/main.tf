@@ -6,6 +6,10 @@ resource "google_cloud_run_v2_service" "api" {
   deletion_protection = true
   ingress             = "INGRESS_TRAFFIC_ALL"
 
+  lifecycle {
+    ignore_changes = [scaling]
+  }
+
   template {
     service_account                  = var.api_service_account_email
     timeout                          = "30s"
