@@ -96,9 +96,16 @@ async def test_firestore_upload_completion_expiration_and_delete() -> None:
     job_id = uuid4()
 
     updated = await repository.update_token_digest(active.id, "rotated")
-    completed = await repository.mark_completed(active.id, job_id)
+    await repository.claim_completion(
+        active.id,
+        "owner-a",
+        datetime.now(UTC),
+        "claim-a",
+    )
+    completed = await repository.mark_completed(active.id, job_id, "claim-a")
 
     assert updated.token_digest == "rotated"
+    assert completed is not None
     assert completed.completed_job_id == job_id
     assert await repository.find_completed("owner-a", job_id) == completed
     assert await repository.find_completed("owner-b", job_id) is None
@@ -108,3 +115,83 @@ async def test_firestore_upload_completion_expiration_and_delete() -> None:
     assert await repository.get(active.id) is None
     assert await repository.find_idempotent("owner-a", "active-key") is None
     assert await repository.find_completed("owner-a", job_id) is None
+
+
+@pytest.mark.asyncio
+async def test_firestore_completion_and_deletion_claims_are_mutually_exclusive() -> None:
+    gateway = FakeFirestoreGateway()
+    repository = FirestoreUploadRepository(gateway)
+    now = datetime.now(UTC)
+    active = make_session(expires_at=now + timedelta(hours=1))
+    await repository.create(active)
+
+    assert gateway.documents[f"uploads/{active.id}"]["ttlExpiresAt"] == active.expires_at
+
+    claimed = await repository.claim_completion(
+        active.id,
+        "owner-a",
+        now,
+        "claim-a",
+    )
+
+    assert claimed is not None
+    assert claimed.state == "completing"
+    assert claimed.completion_claim_id == "claim-a"
+    assert gateway.documents[f"uploads/{active.id}"]["ttlExpiresAt"] is None
+    assert await repository.claim_completion(
+        active.id,
+        "owner-a",
+        now,
+        "claim-b",
+    ) is None
+    await repository.release_completion(active.id, "claim-b")
+    assert (await repository.get(active.id)).state == "completing"
+    assert gateway.documents[f"uploads/{active.id}"]["ttlExpiresAt"] is None
+    assert await repository.claim_deletion(active.id, "owner-a") is None
+
+    reclaimed = await repository.claim_completion(
+        active.id,
+        "owner-a",
+        now + timedelta(minutes=6),
+        "claim-b",
+    )
+    assert reclaimed is not None
+    assert reclaimed.completion_claim_id == "claim-b"
+
+    await repository.release_completion(active.id, "claim-b")
+
+    assert gateway.documents[f"uploads/{active.id}"]["ttlExpiresAt"] == active.expires_at
+
+
+@pytest.mark.asyncio
+async def test_firestore_expiry_cleanup_waits_for_completion_lease() -> None:
+    gateway = FakeFirestoreGateway()
+    repository = FirestoreUploadRepository(gateway)
+    now = datetime.now(UTC)
+    active = make_session(expires_at=now + timedelta(minutes=1))
+    await repository.create(active)
+    await repository.claim_completion(active.id, "owner-a", now, "claim-a")
+
+    assert await repository.claim_expired(active.id, now + timedelta(minutes=2)) is None
+
+    claimed = await repository.claim_expired(active.id, now + timedelta(minutes=6))
+
+    assert claimed is not None
+    assert claimed.state == "deleting"
+    assert claimed.completion_claim_id is None
+    assert claimed.completion_claim_expires_at is None
+    assert gateway.documents[f"uploads/{active.id}"]["ttlExpiresAt"] is None
+
+
+@pytest.mark.asyncio
+async def test_firestore_abandon_claim_pauses_ttl_cleanup() -> None:
+    gateway = FakeFirestoreGateway()
+    repository = FirestoreUploadRepository(gateway)
+    active = make_session()
+    await repository.create(active)
+
+    claimed = await repository.claim_deletion(active.id, "owner-a")
+
+    assert claimed is not None
+    assert claimed.state == "deleting"
+    assert gateway.documents[f"uploads/{active.id}"]["ttlExpiresAt"] is None

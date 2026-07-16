@@ -189,6 +189,36 @@ struct UploadAPIClientTests {
     }
 
     @Test
+    func abandonUsesAuthenticatedUploadResource() async throws {
+        let transport = HTTPTransport { request in
+            #expect(request.httpMethod == "DELETE")
+            #expect(request.url?.path == "/v1/uploads/\(self.uploadID.uuidString)")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dev-user-a")
+            return (Data(), self.response(status: 204, request: request))
+        }
+        let client = UploadAPIClient(configuration: configuration(), transport: transport)
+
+        try await client.abandon(uploadID: uploadID)
+    }
+
+    @Test
+    func terminatedGCSCredentialBecomesRecoverableTypedError() async {
+        let sessionURL = URL(string: "https://storage.example/upload?session=expired")!
+        let transport = HTTPTransport { request in
+            (Data(), self.response(status: 410, request: request))
+        }
+        let client = UploadAPIClient(configuration: configuration(), transport: transport)
+
+        await #expect(throws: UploadAPIError.resumableSessionTerminated) {
+            try await client.offset(
+                uploadURL: sessionURL,
+                protocol: .gcsResumable,
+                total: 6
+            )
+        }
+    }
+
+    @Test
     func backendEnvelopeBecomesSafeTypedError() async {
         let data = Data(#"{"error":{"code":"upload_incomplete","message":"Upload is incomplete.","requestId":"request-test"}}"#.utf8)
         let transport = HTTPTransport { request in

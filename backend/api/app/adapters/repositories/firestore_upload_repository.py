@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 from typing import Any
 from uuid import UUID
@@ -113,8 +113,131 @@ class FirestoreUploadRepository:
         self,
         upload_id: UUID,
         job_id: UUID,
-    ) -> UploadSession:
-        return await self._replace_fields(upload_id, completedJobId=str(job_id))
+        claim_id: str,
+    ) -> UploadSession | None:
+        async def operation(transaction: FirestoreTransaction) -> UploadSession | None:
+            path = _upload_path(upload_id)
+            document = await transaction.get(path)
+            if (
+                document is None
+                or document.get("state", "active") != "completing"
+                or document.get("completionClaimId") != claim_id
+            ):
+                return None
+            document.update(
+                completedJobId=str(job_id),
+                state="completed",
+                completionClaimId=None,
+                completionClaimExpiresAt=None,
+                ttlExpiresAt=document["expiresAt"],
+            )
+            transaction.set(path, document)
+            return _session_from_document(document)
+
+        return await self._gateway.run_transaction(operation)
+
+    async def claim_completion(
+        self,
+        upload_id: UUID,
+        owner_id: str,
+        instant: datetime,
+        claim_id: str,
+    ) -> UploadSession | None:
+        async def operation(transaction: FirestoreTransaction) -> UploadSession | None:
+            path = _upload_path(upload_id)
+            document = await transaction.get(path)
+            if document is None or document.get("ownerId") != owner_id:
+                return None
+            session = _session_from_document(document)
+            if session.state == "completed":
+                return session
+            if session.state == "completing" and session.completion_claim_id == claim_id:
+                return session
+            lease_active = (
+                session.completion_claim_expires_at is not None
+                and session.completion_claim_expires_at > instant
+            )
+            if session.state == "completing" and lease_active:
+                return None
+            if session.state not in {"active", "completing"} or session.expires_at <= instant:
+                return None
+            document["state"] = "completing"
+            document["completionClaimId"] = claim_id
+            document["completionClaimExpiresAt"] = instant + timedelta(minutes=5)
+            document["ttlExpiresAt"] = None
+            transaction.set(path, document)
+            return _session_from_document(document)
+
+        return await self._gateway.run_transaction(operation)
+
+    async def release_completion(self, upload_id: UUID, claim_id: str) -> None:
+        async def operation(transaction: FirestoreTransaction) -> None:
+            path = _upload_path(upload_id)
+            document = await transaction.get(path)
+            if (
+                document is not None
+                and document.get("state", "active") == "completing"
+                and document.get("completionClaimId") == claim_id
+            ):
+                document["state"] = "active"
+                document["completionClaimId"] = None
+                document["completionClaimExpiresAt"] = None
+                document["ttlExpiresAt"] = document["expiresAt"]
+                transaction.set(path, document)
+
+        await self._gateway.run_transaction(operation)
+
+    async def claim_expired(
+        self,
+        upload_id: UUID,
+        instant: datetime,
+    ) -> UploadSession | None:
+        async def operation(transaction: FirestoreTransaction) -> UploadSession | None:
+            path = _upload_path(upload_id)
+            document = await transaction.get(path)
+            if document is None:
+                return None
+            session = _session_from_document(document)
+            if (
+                session.expires_at > instant
+                or (
+                    session.state == "completing"
+                    and session.completion_claim_expires_at is not None
+                    and session.completion_claim_expires_at > instant
+                )
+                or session.state not in {"active", "completing", "deleting"}
+            ):
+                return None
+            document["state"] = "deleting"
+            document["completionClaimId"] = None
+            document["completionClaimExpiresAt"] = None
+            document["ttlExpiresAt"] = None
+            transaction.set(path, document)
+            return _session_from_document(document)
+
+        return await self._gateway.run_transaction(operation)
+
+    async def claim_deletion(
+        self,
+        upload_id: UUID,
+        owner_id: str,
+    ) -> UploadSession | None:
+        async def operation(transaction: FirestoreTransaction) -> UploadSession | None:
+            path = _upload_path(upload_id)
+            document = await transaction.get(path)
+            if document is None or document.get("ownerId") != owner_id:
+                return None
+            session = _session_from_document(document)
+            if session.state == "deleting":
+                return session
+            if session.state != "active":
+                return None
+            document["state"] = "deleting"
+            document["ttlExpiresAt"] = None
+            transaction.set(path, document)
+            return _session_from_document(document)
+
+        return await self._gateway.run_transaction(operation)
 
     async def delete(self, upload_id: UUID) -> None:
         async def operation(transaction: FirestoreTransaction) -> None:
@@ -175,12 +298,16 @@ def _session_to_document(session: UploadSession) -> dict[str, Any]:
         "tokenDigest": session.token_digest,
         "offset": session.offset,
         "expiresAt": session.expires_at,
+        "ttlExpiresAt": session.expires_at,
         "completedJobId": (
             str(session.completed_job_id)
             if session.completed_job_id is not None
             else None
         ),
         "uploadUrl": session.upload_url,
+        "state": session.state,
+        "completionClaimId": session.completion_claim_id,
+        "completionClaimExpiresAt": session.completion_claim_expires_at,
     }
 
 
@@ -199,4 +326,7 @@ def _session_from_document(document: dict[str, Any]) -> UploadSession:
             UUID(completed_job_id) if completed_job_id is not None else None
         ),
         upload_url=document.get("uploadUrl"),
+        state=document.get("state", "active"),
+        completion_claim_id=document.get("completionClaimId"),
+        completion_claim_expires_at=document.get("completionClaimExpiresAt"),
     )

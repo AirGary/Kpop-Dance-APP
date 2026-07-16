@@ -46,6 +46,10 @@ class UploadIncompleteError(UploadServiceError):
     code = "upload_incomplete"
 
 
+class UploadCompletionInProgressError(UploadServiceError):
+    code = "upload_completion_in_progress"
+
+
 class ChecksumMismatchError(UploadServiceError):
     code = "checksum_mismatch"
 
@@ -237,15 +241,19 @@ class UploadService:
         await self.cleanup_expired()
         lock = self._upload_locks.setdefault(upload_id, asyncio.Lock())
         async with lock:
-            session = await self._repository.get(upload_id)
-            if session is None or session.owner_id != owner_id:
-                raise UploadNotFoundError
+            claim_id = secrets.token_urlsafe(24)
+            session = await self._claim_completion(
+                owner_id,
+                upload_id,
+                claim_id,
+            )
             if session.completed_job_id is not None:
                 job = await self._jobs.get_job(owner_id, session.completed_job_id)
                 return CompletedUpload(job=job, created=False)
 
             actual_size = await self._objects.size(owner_id, upload_id)
             if actual_size != session.request.byte_count:
+                await self._repository.release_completion(upload_id, claim_id)
                 raise UploadIncompleteError
             if (
                 self._direct_objects is None
@@ -254,6 +262,7 @@ class UploadService:
             ):
                 await self._objects.delete(owner_id, upload_id)
                 await self._repository.update_offset(upload_id, session.offset, 0)
+                await self._repository.release_completion(upload_id, claim_id)
                 raise ChecksumMismatchError
 
             job_request = CreateJobRequest.model_validate(
@@ -270,16 +279,65 @@ class UploadService:
                 f"upload-complete:{upload_id}",
                 job_request,
             )
-            await self._repository.mark_completed(upload_id, job.id)
+            completed = await self._repository.mark_completed(
+                upload_id,
+                job.id,
+                claim_id,
+            )
+            if completed is None:
+                raise UploadCompletionInProgressError
             return CompletedUpload(job=job, created=created)
 
     async def cleanup_expired(self) -> int:
         expired = await self._repository.expired_before(self._clock())
+        deleted = 0
         for session in expired:
-            await self._objects.delete(session.owner_id, session.id)
-            await self._repository.delete(session.id)
-            self._upload_locks.pop(session.id, None)
-        return len(expired)
+            claimed = await self._repository.claim_expired(
+                session.id,
+                self._clock(),
+            )
+            if claimed is None:
+                continue
+            if self._direct_objects is not None and claimed.upload_url is not None:
+                await self._direct_objects.cancel_resumable_session(claimed.upload_url)
+            await self._objects.delete(claimed.owner_id, claimed.id)
+            await self._repository.delete(claimed.id)
+            self._upload_locks.pop(claimed.id, None)
+            deleted += 1
+        return deleted
+
+    async def abandon(self, owner_id: str, upload_id: UUID) -> None:
+        session = await self._repository.claim_deletion(upload_id, owner_id)
+        if session is None:
+            raise UploadNotFoundError
+        if self._direct_objects is not None and session.upload_url is not None:
+            await self._direct_objects.cancel_resumable_session(session.upload_url)
+        await self._objects.delete(session.owner_id, session.id)
+        await self._repository.delete(session.id)
+        self._upload_locks.pop(session.id, None)
+
+    async def _claim_completion(
+        self,
+        owner_id: str,
+        upload_id: UUID,
+        claim_id: str,
+    ) -> UploadSession:
+        for _ in range(100):
+            session = await self._repository.claim_completion(
+                upload_id,
+                owner_id,
+                self._clock(),
+                claim_id,
+            )
+            if session is not None:
+                return session
+            observed = await self._repository.get(upload_id)
+            if observed is None or observed.owner_id != owner_id:
+                raise UploadNotFoundError
+            if observed.state != "completing":
+                raise UploadCompletionInProgressError
+            await asyncio.sleep(0.01)
+        raise UploadCompletionInProgressError
 
     async def _valid_token_session(
         self,

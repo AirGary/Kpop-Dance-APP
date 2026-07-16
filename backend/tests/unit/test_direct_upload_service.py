@@ -1,5 +1,6 @@
 import hashlib
 import asyncio
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
@@ -18,6 +19,7 @@ class FakeDirectUploadStore:
     def __init__(self, content: bytes) -> None:
         self.content = content
         self.created: list[tuple[str, object]] = []
+        self.cancelled: list[str] = []
 
     async def create_resumable_session(self, owner_id, upload_id, request) -> str:
         await asyncio.sleep(0)
@@ -29,6 +31,9 @@ class FakeDirectUploadStore:
 
     async def delete(self, owner_id, upload_id) -> None:
         return None
+
+    async def cancel_resumable_session(self, upload_url: str) -> None:
+        self.cancelled.append(upload_url)
 
 
 def request(content: bytes) -> CreateUploadRequest:
@@ -137,3 +142,79 @@ async def test_cross_instance_completion_creates_one_job(tmp_path) -> None:
 
     assert first.job.id == second.job.id
     assert {first.created, second.created} == {True, False}
+
+
+@pytest.mark.asyncio
+async def test_expired_direct_upload_cancels_credential_before_deleting_metadata(
+    tmp_path,
+) -> None:
+    content = b"video"
+    now = datetime.now(UTC)
+    repository = InMemoryUploadRepository()
+    direct = FakeDirectUploadStore(content)
+    service = UploadService.direct(
+        repository,
+        direct,
+        JobService(InMemoryJobRepository(), LocalObjectStore(tmp_path)),
+        clock=lambda: now,
+    )
+    created = await service.create_session("owner-a", "key", request(content))
+    service._clock = lambda: now + timedelta(hours=25)
+
+    assert await service.cleanup_expired() == 1
+    assert direct.cancelled == [created.upload_url]
+    assert await repository.get(created.session.id) is None
+
+
+@pytest.mark.asyncio
+async def test_completion_claim_prevents_cross_instance_expiry_cleanup(tmp_path) -> None:
+    content = b"video"
+    now = datetime.now(UTC)
+    repository = InMemoryUploadRepository()
+    direct = FakeDirectUploadStore(content)
+    jobs = InMemoryJobRepository()
+    first = UploadService.direct(
+        repository,
+        direct,
+        JobService(jobs, LocalObjectStore(tmp_path)),
+        clock=lambda: now,
+    )
+    second = UploadService.direct(
+        repository,
+        direct,
+        JobService(jobs, LocalObjectStore(tmp_path)),
+        clock=lambda: now + timedelta(hours=24, minutes=1),
+    )
+    created = await first.create_session("owner-a", "key", request(content))
+    claimed = await repository.claim_completion(
+        created.session.id,
+        "owner-a",
+        now + timedelta(hours=23, minutes=59),
+        "claim-a",
+    )
+
+    assert claimed is not None
+    assert await second.cleanup_expired() == 0
+    assert direct.cancelled == []
+
+
+@pytest.mark.asyncio
+async def test_abandon_claim_cancels_session_and_allows_idempotent_recreation(
+    tmp_path,
+) -> None:
+    content = b"video"
+    repository = InMemoryUploadRepository()
+    direct = FakeDirectUploadStore(content)
+    service = UploadService.direct(
+        repository,
+        direct,
+        JobService(InMemoryJobRepository(), LocalObjectStore(tmp_path)),
+    )
+    first = await service.create_session("owner-a", "key", request(content))
+
+    await service.abandon("owner-a", first.session.id)
+    second = await service.create_session("owner-a", "key", request(content))
+
+    assert direct.cancelled == [first.upload_url]
+    assert second.session.id != first.session.id
+    assert second.upload_url != first.upload_url

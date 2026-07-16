@@ -116,9 +116,16 @@ async def test_repository_marks_completion_and_lists_expired_sessions() -> None:
     await repository.create(active)
     job_id = uuid4()
 
-    completed = await repository.mark_completed(active.id, job_id)
+    await repository.claim_completion(
+        active.id,
+        "owner-a",
+        datetime.now(UTC),
+        "claim-a",
+    )
+    completed = await repository.mark_completed(active.id, job_id, "claim-a")
     found = await repository.expired_before(datetime.now(UTC))
 
+    assert completed is not None
     assert completed.completed_job_id == job_id
     assert found == [expired]
 

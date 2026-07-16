@@ -55,6 +55,8 @@ def test_firestore_is_native_and_api_access_is_least_privilege():
     assert 'deletion_policy             = "ABANDON"' in source
     assert 'resource "google_firebase_project" "default"' in source
     assert 'resource "google_firestore_field" "upload_expiration"' in source
+    assert 'field      = "ttlExpiresAt"' in source
+    assert 'field      = "expiresAt"' not in source
     assert "ttl_config {}" in source
     assert "roles/datastore.user" in source
     assert "roles/editor" not in source

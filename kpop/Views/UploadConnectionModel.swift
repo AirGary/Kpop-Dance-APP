@@ -140,7 +140,7 @@ final class UploadConnectionModel {
             "无法连接本地后端，请确认服务已启动后继续上传。"
         case .backend(_, _, let message):
             message
-        case .invalidResponse, .encoding, .decoding:
+        case .invalidResponse, .encoding, .decoding, .resumableSessionTerminated:
             "后端响应无法识别，请继续上传。"
         }
     }

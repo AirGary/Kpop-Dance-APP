@@ -30,3 +30,12 @@ def test_cloud_script_cannot_change_billing_or_start_cloud_builds():
     assert "billing budgets" not in source
     assert "gcloud builds" not in source
     assert "firebase" not in source.lower()
+
+
+def test_foundation_requires_a_saved_reviewed_plan_before_apply():
+    source = SCRIPT.read_text()
+
+    assert "stage5b-foundation.tfplan" in source
+    assert "foundation-plan" in source
+    assert "foundation-apply" in source
+    assert "terraform_dev apply \\\n    -target=" not in source

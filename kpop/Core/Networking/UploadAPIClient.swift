@@ -5,6 +5,7 @@ nonisolated enum UploadAPIError: Error, Equatable, Sendable {
     case transport
     case encoding
     case decoding
+    case resumableSessionTerminated
     case backend(status: Int, code: String, message: String)
 }
 
@@ -112,7 +113,8 @@ nonisolated struct UploadAPIClient: Sendable {
             request.setValue("bytes */\(total)", forHTTPHeaderField: "Content-Range")
             let (_, response) = try await perform(
                 request,
-                successCodes: [200, 201, 308]
+                successCodes: [200, 201, 308],
+                mapsTerminatedResumableSession: true
             )
             if response.statusCode == 200 || response.statusCode == 201 {
                 return total
@@ -146,7 +148,11 @@ nonisolated struct UploadAPIClient: Sendable {
         let successCodes: Set<Int> = uploadProtocol == .stageLab
             ? [201, 308]
             : [200, 201, 308]
-        let (_, response) = try await perform(request, successCodes: successCodes)
+        let (_, response) = try await perform(
+            request,
+            successCodes: successCodes,
+            mapsTerminatedResumableSession: uploadProtocol == .gcsResumable
+        )
         let isComplete = uploadProtocol == .stageLab
             ? response.statusCode == 201
             : response.statusCode == 200 || response.statusCode == 201
@@ -175,9 +181,21 @@ nonisolated struct UploadAPIClient: Sendable {
         }
     }
 
+    func abandon(uploadID: UUID) async throws {
+        var request = URLRequest(
+            url: configuration.baseURL.appending(
+                path: "v1/uploads/\(uploadID.uuidString)"
+            )
+        )
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        _ = try await perform(request, successCodes: [204])
+    }
+
     private func perform(
         _ request: URLRequest,
-        successCodes: Set<Int>
+        successCodes: Set<Int>,
+        mapsTerminatedResumableSession: Bool = false
     ) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
@@ -192,6 +210,11 @@ nonisolated struct UploadAPIClient: Sendable {
             throw UploadAPIError.invalidResponse
         }
         guard successCodes.contains(httpResponse.statusCode) else {
+            if mapsTerminatedResumableSession,
+               (400...499).contains(httpResponse.statusCode),
+               ![408, 429].contains(httpResponse.statusCode) {
+                throw UploadAPIError.resumableSessionTerminated
+            }
             guard let envelope = try? JSONDecoder().decode(UploadAPIErrorEnvelope.self, from: data) else {
                 throw UploadAPIError.invalidResponse
             }

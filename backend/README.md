@@ -116,7 +116,9 @@ Firebase project alongside the private data services. Run each command only
 after the previous result has been reviewed:
 
 ```bash
-./scripts/cloud-bootstrap.sh foundation
+./scripts/cloud-bootstrap.sh foundation-plan
+terraform -chdir=infra/terraform/environments/dev show stage5b-foundation.tfplan
+./scripts/cloud-bootstrap.sh foundation-apply
 image_uri="$(./scripts/cloud-bootstrap.sh image)"
 ./scripts/cloud-bootstrap.sh plan "$image_uri"
 terraform -chdir=infra/terraform/environments/dev show stage5b.tfplan

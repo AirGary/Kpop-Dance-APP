@@ -23,7 +23,7 @@ resource "google_firestore_field" "upload_expiration" {
   project    = var.project_id
   database   = google_firestore_database.jobs.name
   collection = "uploads"
-  field      = "expiresAt"
+  field      = "ttlExpiresAt"
 
   ttl_config {}
 }

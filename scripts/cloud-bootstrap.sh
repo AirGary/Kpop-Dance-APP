@@ -5,6 +5,7 @@ readonly repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly backend_root="$repository_root/backend"
 readonly terraform_root="$repository_root/infra/terraform/environments/dev"
 readonly plan_file="$terraform_root/stage5b.tfplan"
+readonly foundation_plan_file="$terraform_root/stage5b-foundation.tfplan"
 readonly project_id="stage-lab-dev-gary-202607"
 readonly region="asia-southeast1"
 readonly repository="stage-lab-api"
@@ -17,7 +18,7 @@ readonly bootstrap_digest="sha256:0000000000000000000000000000000000000000000000
 readonly system_git="/usr/bin/git"
 
 usage() {
-  printf '%s\n' "Usage: $0 {foundation|image|plan IMAGE_DIGEST_URI|apply|smoke}" >&2
+  printf '%s\n' "Usage: $0 {foundation-plan|foundation-apply|image|plan IMAGE_DIGEST_URI|apply|smoke}" >&2
 }
 
 require_tools() {
@@ -34,17 +35,28 @@ terraform_dev() {
   terraform -chdir="$terraform_root" "$@"
 }
 
-foundation() {
+foundation_plan() {
   require_tools gcloud terraform
   gcloud projects describe "$project_id" --format='value(projectId)' >/dev/null
   terraform_dev init
-  terraform_dev apply \
+  terraform_dev plan \
+    -out="$foundation_plan_file" \
     -target='google_project_service.required' \
     -target='google_artifact_registry_repository.api' \
     -var="project_id=$project_id" \
     -var="container_image=$image_base@$bootstrap_digest" \
     -var="source_bucket_name=$source_bucket_name" \
     -var="result_bucket_name=$result_bucket_name"
+  printf 'Saved foundation plan candidate: %s\n' "$foundation_plan_file"
+}
+
+foundation_apply() {
+  require_tools terraform
+  if [[ ! -f "$foundation_plan_file" ]]; then
+    printf 'Saved Terraform foundation plan is missing: %s\n' "$foundation_plan_file" >&2
+    exit 1
+  fi
+  terraform_dev apply "$foundation_plan_file"
 }
 
 build_image() {
@@ -132,8 +144,11 @@ smoke_test() {
 }
 
 case "${1:-}" in
-  foundation)
-    foundation
+  foundation-plan)
+    foundation_plan
+    ;;
+  foundation-apply)
+    foundation_apply
     ;;
   image)
     build_image

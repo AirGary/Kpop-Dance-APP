@@ -53,6 +53,11 @@ class MissingBucket:
         return MissingBlob(name)
 
 
+class FakeCancellationResponse:
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
 def upload_request() -> CreateUploadRequest:
     return CreateUploadRequest.model_validate(
         {
@@ -113,3 +118,39 @@ async def test_gcs_store_treats_not_found_subclasses_as_missing() -> None:
 
     assert await store.size("firebase-user", upload_id) == 0
     await store.delete("firebase-user", upload_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [204, 400, 404, 410, 499])
+async def test_gcs_store_cancels_resumable_session_uri(status_code: int) -> None:
+    requests: list[tuple[str, str]] = []
+
+    async def cancel(method: str, url: str):
+        requests.append((method, url))
+        return FakeCancellationResponse(status_code)
+
+    store = GCSUploadObjectStore(FakeBucket(), request=cancel)
+
+    await store.cancel_resumable_session(
+        "https://storage.example/upload-session-secret"
+    )
+
+    assert requests == [
+        ("DELETE", "https://storage.example/upload-session-secret")
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [401, 403, 500])
+async def test_gcs_store_rejects_unconfirmed_session_cancellation(
+    status_code: int,
+) -> None:
+    async def cancel(method: str, url: str):
+        return FakeCancellationResponse(status_code)
+
+    store = GCSUploadObjectStore(FakeBucket(), request=cancel)
+
+    with pytest.raises(OSError):
+        await store.cancel_resumable_session(
+            "https://storage.example/upload-session-secret"
+        )

@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
-from typing import Protocol
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol
 from uuid import UUID
 
 from google.api_core.exceptions import NotFound
@@ -13,8 +14,14 @@ class _Bucket(Protocol):
 
 
 class GCSUploadObjectStore:
-    def __init__(self, bucket: _Bucket) -> None:
+    def __init__(
+        self,
+        bucket: _Bucket,
+        *,
+        request: Callable[[str, str], Awaitable[Any]] | None = None,
+    ) -> None:
         self._bucket = bucket
+        self._request = request or self._send_request
 
     @classmethod
     def from_bucket_name(cls, bucket_name: str) -> "GCSUploadObjectStore":
@@ -50,6 +57,12 @@ class GCSUploadObjectStore:
 
         return await asyncio.to_thread(read_size)
 
+    async def cancel_resumable_session(self, upload_url: str) -> None:
+        response = await self._request("DELETE", upload_url)
+        if response.status_code in {204, 400, 404, 410, 499}:
+            return
+        raise OSError("Cloud Storage did not cancel the resumable upload session.")
+
     async def delete(self, owner_id: str, upload_id: UUID) -> None:
         blob = self._blob(owner_id, upload_id)
 
@@ -66,3 +79,17 @@ class GCSUploadObjectStore:
         return self._bucket.blob(
             f"sources/{owner_hash}/uploads/{upload_id}/source.mp4"
         )
+
+    @staticmethod
+    async def _send_request(method: str, url: str):
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+                return await client.request(
+                    method,
+                    url,
+                    headers={"Content-Length": "0"},
+                )
+        except httpx.HTTPError as error:
+            raise OSError("Cloud Storage session cancellation failed.") from error
