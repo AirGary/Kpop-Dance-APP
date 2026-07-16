@@ -84,6 +84,7 @@ def test_cloud_run_is_public_scale_to_zero_and_bounded():
     assert re.search(r'timeout\s*=\s*"30s"', source)
     assert "cpu_idle          = true" in source
     assert "startup_cpu_boost = false" in source
+    assert "ignore_changes = [scaling]" in source
 
 
 def test_artifact_registry_bounds_tagged_and_untagged_image_retention():
