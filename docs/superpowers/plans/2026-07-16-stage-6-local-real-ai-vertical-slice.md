@@ -177,7 +177,7 @@ git commit -m "feat: persist local analysis jobs"
 **Interfaces:**
 - Produces: `MediaReport(duration_seconds, width, height, fps, rotation_degrees, video_codec, has_audio)`.
 - Produces: `create_proxy(source: Path, destination: Path) -> MediaReport`.
-- Produces stable errors: `media_corrupt`, `video_track_missing`, `duration_exceeded`, `codec_unsupported`, `ffmpeg_failed`.
+- Produces stable errors: `media_corrupt`, `video_track_missing`, `duration_exceeded`, `codec_unsupported`, `file_size_exceeded`, `ffmpeg_failed`. `file_size_exceeded` was added during Task 3 implementation as the explicit result for the existing 2 GiB input limit.
 
 - [ ] **Step 1: Generate legal synthetic fixtures and write failing tests**
 
