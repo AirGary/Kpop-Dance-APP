@@ -10,7 +10,9 @@ from api.app.ports.job_repository import (
     IdempotencyConflictError,
     JobNotFoundError,
     JobRecord,
+    JobStateConflictError,
 )
+from api.app.schemas.analysis import AnalysisJobState
 from api.app.schemas.jobs import JobResponse
 
 
@@ -65,6 +67,30 @@ class FirestoreJobRepository:
             transaction.delete(_index_path(owner_id, record.idempotency_key))
 
         await self._gateway.run_transaction(operation)
+
+    async def update_response(
+        self,
+        expected_state: AnalysisJobState,
+        response: JobResponse,
+    ) -> JobRecord:
+        async def operation(transaction: FirestoreTransaction) -> JobRecord:
+            path = _job_path(response.id)
+            document = await transaction.get(path)
+            if document is None:
+                raise JobNotFoundError
+            current = _record_from_document(document)
+            if current.response.state != expected_state:
+                raise JobStateConflictError
+            updated = JobRecord(
+                owner_id=current.owner_id,
+                idempotency_key=current.idempotency_key,
+                request_hash=current.request_hash,
+                response=response,
+            )
+            transaction.set(path, _record_to_document(updated))
+            return updated
+
+        return await self._gateway.run_transaction(operation)
 
     async def find_by_idempotency_key(
         self,

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from api.app.schemas.analysis import AnalysisJobState
 from api.app.schemas.jobs import JobResponse
 
 
@@ -21,12 +22,22 @@ class IdempotencyConflictError(Exception):
     pass
 
 
+class JobStateConflictError(Exception):
+    pass
+
+
 class JobRepository(Protocol):
     async def create(self, record: JobRecord) -> tuple[JobRecord, bool]: ...
 
     async def get_for_owner(self, job_id: UUID, owner_id: str) -> JobRecord: ...
 
     async def delete_for_owner(self, job_id: UUID, owner_id: str) -> None: ...
+
+    async def update_response(
+        self,
+        expected_state: AnalysisJobState,
+        response: JobResponse,
+    ) -> JobRecord: ...
 
     async def find_by_idempotency_key(
         self,

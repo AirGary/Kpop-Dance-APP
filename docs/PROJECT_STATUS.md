@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 已完成，Task 2 待开始确认。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 已完成，Task 2 持久化分析合约与工作区待验收。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -36,6 +36,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-16：用户确认并合并 Stage 6 书面规格，允许进入实施计划阶段；尚未安装 AI 依赖或修改产品代码。
 - 2026-07-16：用户确认首版模型基线为 RTMDet-m + ByteTrack + RTMPose-m；接口必须可替换，Analysis Package 保持稳定，实施前核对代码与权重商业许可证，首版不使用 VideoMAE 或视频大模型替代逐帧追踪。
 - 2026-07-16：用户回复“已合并并确认实施计划”，Stage 6 正式进入实施；首个执行范围仅为 Python 3.11、FFmpeg、模型来源/许可证和单帧真实推理门禁，不启用云 GPU、不改产品 UI。
+- 2026-07-17：用户回复“已合并验收记录，确认开始 Task 2”，允许实现本地分析状态/DTO、原子文件仓库、owner/job 隔离工作区和 Job compare-and-set；不读取真实视频内容、不运行 AI、不修改 iOS UI、不创建云资源。
 
 ## 已完成阶段
 
@@ -49,6 +50,29 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 6 Task 1：本地 AI 隔离运行环境、模型/依赖供应链门禁与真实单帧推理。
 
 ## 最近完成任务
+
+### Task：Stage 6 Task 2 持久化分析合约与工作区（待验收）
+
+**目标：** 为后续真实媒体预检与人物分析建立可恢复、可隔离、模型无关的数据边界；API 只暴露相对内容路径，不暴露本机绝对路径。
+
+**Subtask 1：稳定 DTO 与状态合约**
+
+- [x] 先写全部状态、候选舞者、目标选择、结果元数据和错误详情的失败测试。
+- [x] 实现 Pydantic DTO 与跨端 JSON fixtures，保持 schema version `1`。
+
+**Subtask 2：持久化分析仓库**
+
+- [x] 先写重启恢复、原子替换、owner 隔离、同一 not-found 和路径穿越失败测试。
+- [x] 实现 `<OBJECT_STORAGE_ROOT>/<owner>/<job>/analysis/` 下的 JSON 持久化。
+
+**Subtask 3：工作区与 Job 状态转换**
+
+- [x] 先写 hard-link、copy fallback、源文件不变和 compare-and-set 失败测试。
+- [x] 实现上传提升与 InMemory/Firestore JobRepository 条件更新。
+
+**完成条件：** 聚焦测试、完整 `verify-backend.sh`、静态差异检查和独立代码审查全部通过；更新文档后提交 GitHub。**成本：** 仅本机 CPU/磁盘，云端费用 `0`。**安全风险：** owner/path 校验错误可能造成越权或路径穿越，必须以相同 not-found 与根目录 containment 测试阻断。**回退：** 本任务不迁移现有数据、不调用云 API，撤销本分支即可恢复。
+
+实际结果：稳定分析 DTO、schema version `1` fixtures、文件型 AnalysisRepository、本地隔离工作区及 InMemory/Firestore Job compare-and-set 已实现。上传提升接口只接收 `owner_id/job_id/upload_id`，源路径由受控根目录推导；发布和 JSON 替换使用唯一临时文件、非覆盖 hard-link 或原子 replace，并对文件及父目录执行持久化同步。Task 2 未增加 API route、未读取真实视频内容、未运行模型、未修改 iOS，也未创建或调用云资源。
 
 ### Task：Stage 6 Task 1 本地 AI 运行环境门禁（已验收）
 
@@ -115,6 +139,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 5. Source Bucket 对象 1 天后清理；Result Bucket 对象 7 天后清理；Firestore `uploads.ttlExpiresAt` TTL 已为 `ACTIVE`。
 6. 后续 AI Worker 将读取 Source Bucket，写入 Result Bucket；App 下载 Analysis Package 后保存到本机。
 7. Stage 6 当前本地 Worker 仅读取生成的测试帧；模型、虚拟环境、锁文件和能力报告位于 Git 忽略的 `.local-ai/`，尚未读取用户舞蹈视频或接入 API。
+8. Task 2 将分析状态和结果 JSON 原子保存在 `<OBJECT_STORAGE_ROOT>/<owner>/<job>/analysis/`；调用者只能使用受校验的 owner、job 和相对内容路径，重启后可从磁盘恢复。
+9. 本地上传提升从 `<OBJECT_STORAGE_ROOT>/<owner>/uploads/<upload>/source.mp4` 创建到任务工作区的不可覆盖副本；Job 状态通过 compare-and-set 更新，状态不匹配时不写入。
 
 ## 技术栈与架构摘要
 
@@ -141,6 +167,14 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - `./scripts/verify-backend.sh`：146 项通过，0 失败，1 个既有 Starlette/httpx 弃用警告；Cloud API 环境未安装 torch、MMCV、MMDetection 或 MMPose。
 - iOS 基线：单元测试、UI 冷启动、Staging 和 Release Simulator 构建通过；本 Task 未修改 iOS 产品代码。
 - 许可证：manifest 在安装前仅接受本阶段已审查的 Apache-2.0 模型；依赖 metadata/随包许可证已完成技术 Demo 审查。`xtcocotools` wheel 内 MIT/BSD 许可证 SHA-256 为 `f96addc34b360737be24174358254ae2c36ab9f757d7810cb52ef5114a25f1cc`；商品发布仍须专项法律复核与 notices 汇总。
+
+### 2026-07-17 Stage 6 Task 2
+
+- 聚焦持久化、工作区、合约与 Firestore CAS 测试：`58` 项通过，`0` 失败。
+- `./scripts/verify-backend.sh`：`197` 项通过，`0` 失败，`1` 个既有 Starlette/httpx 弃用警告。
+- `git diff --check ee48f5a..HEAD`：通过，无空白错误。
+- 初次独立审查发现的任意源路径越权、并发覆盖、固定临时文件冲突、NaN/Inf 和目录持久化风险均已修复并增加回归测试；最终独立复审 `P0/P1/P2` 均为 `0`。
+- 本任务未运行 iOS、真实视频、AI 模型或云环境测试，因为改动仅限后端本地持久化边界，未修改相应运行链路。
 
 ### 2026-07-16 真实云环境
 
@@ -173,12 +207,13 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - **功能缺口：** 没有真实 AI 分析，当前仅完成云端数据基础。
 - **阶段变更：** 用户登录与正式云上传联调已延期；Stage 6 先解决真实 AI 成品闭环。
 - **已缓解：** RTMDet-m/RTMPose-m 已在 Apple Silicon 完成 CPU 单帧真实推理；MPS 未通过整组门禁，当前稳定设备固定为 CPU，后续性能验收不能假设 GPU 加速。
+- **已缓解：** Task 2 的 owner/path 隔离、路径穿越、并发发布、原子写入、重启恢复、非有限浮点数和 Job CAS 已有自动化回归保护；当前仅完成本地文件实现，尚未通过 API 暴露。
 - **商品化法律风险：** OpenMMLab 代码与 checkpoint artifact 许可证门禁通过，但当前官方检测/姿态权重的训练数据包含 COCO、Objects365 和 Body7 来源。发布商业版本前必须完成训练数据与模型权重的专项法律复核；本地技术 Demo 通过不等于 App Store 法律批准。
 - Terraform state 当前只保存在主检出目录本机；丢失会增加基础设施恢复难度，需要后续迁移到受保护的远端 state。
 
 ## 下一阶段建议
 
-下一步是等待用户确认开始 Stage 6 Task 2：定义持久化分析状态、稳定 DTO 和 owner/job 隔离工作区。Task 2 不运行人物模型、不读取真实舞蹈视频、不修改 iOS UI、不创建云资源或付费服务；验收以状态/DTO 合约、原子持久化、所有权隔离和现有后端回归通过为准。确认后才按测试先行实施；随后才进入媒体预检、真实候选舞者、目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。
+Stage 6 Task 2 已完成本地实现、测试和独立复审，当前等待 GitHub 合并和用户验收。验收后才开始 Task 3 媒体预检与 720p/30fps 分析代理；Task 3 尚未启动。
 
 ## 阶段验收记录
 
@@ -188,6 +223,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-16：用户回复“已合并并确认实施计划”，Stage 6 开始执行 Task 1。
 - 2026-07-16：Stage 6 Task 1 完整技术门禁通过，状态更新为“待验收”；尚未开始 Task 2。
 - 2026-07-17：用户回复“已合并并验收 Task 1”；GitHub PR #8 合并提交 `750e047` 已核实，Task 1 正式标记为“已完成”，Task 2 尚未开始。
+- 2026-07-17：用户确认开始 Task 2；状态更新为“进行中”，尚无 Task 2 产品代码或部署变更。
+- 2026-07-17：Task 2 稳定 DTO、原子文件仓库、隔离工作区与 Job CAS 已实现；聚焦 `58` 项和后端全量 `197` 项测试通过，状态更新为“待验收”，尚未开始 Task 3。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -199,4 +236,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 6 设计合并提交：`ff2350d`。
 - Stage 6 实施计划合并提交：`b0d5794`。
 - Stage 6 Task 1 实现提交：`49c3f52`，PR #8 合并提交 `750e047`。
-- 当前工作分支：`codex/stage6-task1-acceptance`（仅记录 Task 1 用户验收）。
+- Stage 6 Task 2 当前实现提交：`a9be8f9`；安全与原子发布加固提交：`796f42e`、`31facdd`、`6a02bb2`、`fcce6b4`。
+- 当前工作分支：`codex/stage6-task2-persistence`（Task 2 持久化分析合约与工作区，待验收）。

@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from api.app.schemas.analysis import AnalysisJobState
+
 
 class CreateJobRequest(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
@@ -25,7 +27,7 @@ class JobResponse(BaseModel):
 
     id: UUID
     project_id: UUID = Field(alias="projectId")
-    state: Literal["draft"] = "draft"
+    state: AnalysisJobState = AnalysisJobState.DRAFT
     progress: float = Field(default=0, ge=0, le=1)
     error_code: str | None = Field(default=None, alias="errorCode")
     created_at: datetime = Field(alias="createdAt")
