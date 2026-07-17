@@ -4,6 +4,9 @@ nonisolated enum AnalysisServiceError: Error, Equatable, Sendable {
     case unknownJob(UUID)
     case candidateNotFound(String)
     case resultNotReady(UUID)
+    case backend(String)
+    case transport
+    case invalidResponse
 }
 
 nonisolated protocol AnalysisService: Sendable {

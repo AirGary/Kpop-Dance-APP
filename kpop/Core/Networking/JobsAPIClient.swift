@@ -61,6 +61,9 @@ nonisolated struct JobsAPIClient: Sendable {
         request.httpBody = try JSONEncoder().encode(payload)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        if let pairingToken = configuration.pairingToken {
+            request.setValue(pairingToken, forHTTPHeaderField: "X-Stage-Lab-Pairing-Token")
+        }
         request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         return try await perform(request, successCodes: [200, 201])
     }
@@ -71,6 +74,9 @@ nonisolated struct JobsAPIClient: Sendable {
         )
         request.httpMethod = "GET"
         request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        if let pairingToken = configuration.pairingToken {
+            request.setValue(pairingToken, forHTTPHeaderField: "X-Stage-Lab-Pairing-Token")
+        }
         return try await perform(request, successCodes: [200])
     }
 
