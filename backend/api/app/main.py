@@ -11,6 +11,7 @@ from api.app.routes.health import router as health_router
 from api.app.routes.identity import router as identity_router
 from api.app.routes.jobs import router as jobs_router
 from api.app.routes.uploads import router as uploads_router
+from api.app.routes.analysis import router as analysis_router
 from api.app.schemas.errors import APIError, error_response
 
 
@@ -24,7 +25,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         await resolved_container.upload_service.cleanup_expired()
+        coordinator = getattr(resolved_container, "analysis_coordinator", None)
+        if coordinator is not None:
+            await coordinator.resume_pending()
         yield
+        if coordinator is not None:
+            await coordinator.shutdown()
 
     app = FastAPI(title="Stage Lab API", version="0.1.0", lifespan=lifespan)
     app.state.settings = resolved_settings
@@ -34,6 +40,7 @@ def create_app(
     app.include_router(identity_router)
     app.include_router(jobs_router)
     app.include_router(uploads_router)
+    app.include_router(analysis_router)
 
     @app.exception_handler(APIError)
     async def handle_api_error(request: Request, error: APIError):
