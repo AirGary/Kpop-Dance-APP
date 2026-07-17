@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 已完成，Task 2 持久化分析合约与工作区待验收。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 与 Task 2 已完成，Task 3 尚未开始。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -48,10 +48,11 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 5A：Cloud Run 与 Artifact Registry bootstrap。
 - Stage 5B：Firebase Auth、Firestore、私有 Storage、真实双身份隔离与成本门禁。
 - Stage 6 Task 1：本地 AI 隔离运行环境、模型/依赖供应链门禁与真实单帧推理。
+- Stage 6 Task 2：持久化分析合约、owner/job 隔离工作区、原子文件仓库与 Job compare-and-set。
 
 ## 最近完成任务
 
-### Task：Stage 6 Task 2 持久化分析合约与工作区（待验收）
+### Task：Stage 6 Task 2 持久化分析合约与工作区（已验收）
 
 **目标：** 为后续真实媒体预检与人物分析建立可恢复、可隔离、模型无关的数据边界；API 只暴露相对内容路径，不暴露本机绝对路径。
 
@@ -213,7 +214,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 下一阶段建议
 
-Stage 6 Task 2 已完成本地实现、测试和独立复审，当前等待 GitHub 合并和用户验收。验收后才开始 Task 3 媒体预检与 720p/30fps 分析代理；Task 3 尚未启动。
+Stage 6 Task 2 已由 PR #10 合并并经用户验收。下一建议是 Stage 6 Task 3 媒体预检与 720p/30fps 分析代理；开始前必须单独确认范围、验收标准与测试计划，Task 3 当前尚未启动。
 
 ## 阶段验收记录
 
@@ -225,6 +226,7 @@ Stage 6 Task 2 已完成本地实现、测试和独立复审，当前等待 GitH
 - 2026-07-17：用户回复“已合并并验收 Task 1”；GitHub PR #8 合并提交 `750e047` 已核实，Task 1 正式标记为“已完成”，Task 2 尚未开始。
 - 2026-07-17：用户确认开始 Task 2；状态更新为“进行中”，尚无 Task 2 产品代码或部署变更。
 - 2026-07-17：Task 2 稳定 DTO、原子文件仓库、隔离工作区与 Job CAS 已实现；聚焦 `58` 项和后端全量 `197` 项测试通过，状态更新为“待验收”，尚未开始 Task 3。
+- 2026-07-17：用户回复“已合并并验收 Task 2”；GitHub PR #10 合并提交 `ce3facd` 已核实，Task 2 正式标记为“已完成”，Task 3 尚未开始。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -236,5 +238,5 @@ Stage 6 Task 2 已完成本地实现、测试和独立复审，当前等待 GitH
 - Stage 6 设计合并提交：`ff2350d`。
 - Stage 6 实施计划合并提交：`b0d5794`。
 - Stage 6 Task 1 实现提交：`49c3f52`，PR #8 合并提交 `750e047`。
-- Stage 6 Task 2 当前实现提交：`a9be8f9`；安全与原子发布加固提交：`796f42e`、`31facdd`、`6a02bb2`、`fcce6b4`。
-- 当前工作分支：`codex/stage6-task2-persistence`（Task 2 持久化分析合约与工作区，待验收）。
+- Stage 6 Task 2 实现提交：`a9be8f9`；安全与原子发布加固提交：`796f42e`、`31facdd`、`6a02bb2`、`fcce6b4`；PR #10 合并提交：`ce3facd`。
+- 当前工作分支：`codex/stage6-task2-acceptance`（仅记录 Task 2 验收状态）。
