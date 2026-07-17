@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 运行环境与模型门禁待验收。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 已完成，Task 2 待开始确认。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -46,10 +46,11 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 4：本地视频压缩、断点续传和上传恢复。
 - Stage 5A：Cloud Run 与 Artifact Registry bootstrap。
 - Stage 5B：Firebase Auth、Firestore、私有 Storage、真实双身份隔离与成本门禁。
+- Stage 6 Task 1：本地 AI 隔离运行环境、模型/依赖供应链门禁与真实单帧推理。
 
 ## 最近完成任务
 
-### Task：Stage 6 Task 1 本地 AI 运行环境门禁（待验收）
+### Task：Stage 6 Task 1 本地 AI 运行环境门禁（已验收）
 
 **目标：** 在不污染 Cloud Run API 依赖的前提下，验证 FFmpeg、RTMDet-m 和 RTMPose-m 至少能通过 MPS 或 CPU 完成真实单帧推理。
 
@@ -60,7 +61,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [x] 运行真实单帧推理门禁并记录设备、耗时和版本。
 - [x] 完整回归和文档更新。
 - [x] 提交并推送 GitHub 分支。
-- [ ] 创建 GitHub PR（连接器写权限 403，需用户通过浏览器创建）。
+- [x] GitHub PR #8 已创建并合并。
 
 实际结果：Python 3.11.15、FFmpeg/FFprobe 8.1.2、PyTorch 2.13.0、MMCV 2.1.0、MMDetection 3.3.0 和 MMPose 1.3.2 已在 macOS 27 arm64 隔离环境安装。RTMDet-m 与 RTMPose-m 对合成单帧真实推理均通过；MPS 未通过整组探针，按设计仅回退一次 CPU。首次冷探针 28.553 秒；两份 checkpoint 均在每次模型加载前重新校验 SHA-256。提交前审查发现的许可证拒绝规则、精确安装约束、空检测结果和过期能力报告问题均已增加回归保护。
 
@@ -177,7 +178,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 下一阶段建议
 
-下一步是用户验收 Stage 6 Task 1。验收后开始 Task 2：定义持久化分析状态、稳定 DTO 和 owner/job 隔离工作区；随后才进入媒体预检、真实候选舞者、目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。Sign in with Apple 延后到外部 TestFlight 或商品级用户隔离前处理。
+下一步是等待用户确认开始 Stage 6 Task 2：定义持久化分析状态、稳定 DTO 和 owner/job 隔离工作区。Task 2 不运行人物模型、不读取真实舞蹈视频、不修改 iOS UI、不创建云资源或付费服务；验收以状态/DTO 合约、原子持久化、所有权隔离和现有后端回归通过为准。确认后才按测试先行实施；随后才进入媒体预检、真实候选舞者、目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。
 
 ## 阶段验收记录
 
@@ -186,15 +187,16 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-16：用户回复“已合并并确认规格”，Stage 6 书面规格正式验收，进入实施计划编写。
 - 2026-07-16：用户回复“已合并并确认实施计划”，Stage 6 开始执行 Task 1。
 - 2026-07-16：Stage 6 Task 1 完整技术门禁通过，状态更新为“待验收”；尚未开始 Task 2。
+- 2026-07-17：用户回复“已合并并验收 Task 1”；GitHub PR #8 合并提交 `750e047` 已核实，Task 1 正式标记为“已完成”，Task 2 尚未开始。
 
 ## 最后更新时间与对应 Git 提交
 
-- 最后更新：2026-07-16（Asia/Tokyo）。
+- 最后更新：2026-07-17（Asia/Tokyo）。
 - 已部署 Git 提交：`21161a288e73ebc40a5716b01db1d1f8210037a7`。
 - Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。
 - Firebase Authentication 初始化提交：`420493d`，PR #3 合并提交 `59dec60`。
 - Stage 5B 真实云验证记录提交：`033db4e`，PR #4 合并提交 `d890ecf`。
 - Stage 6 设计合并提交：`ff2350d`。
 - Stage 6 实施计划合并提交：`b0d5794`。
-- Stage 6 Task 1 实现提交：`49c3f52`，已推送 `codex/stage6-task1-runtime`；PR 待浏览器创建。
-- 当前工作分支：`codex/stage6-task1-runtime`（Task 1 运行环境与模型门禁）。
+- Stage 6 Task 1 实现提交：`49c3f52`，PR #8 合并提交 `750e047`。
+- 当前工作分支：`codex/stage6-task1-acceptance`（仅记录 Task 1 用户验收）。
