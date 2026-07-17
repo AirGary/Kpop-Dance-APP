@@ -35,7 +35,7 @@ struct kpopApp: App {
             launchInfo["STAGE_LAB_PAIRING_TOKEN"] = pairingToken
         }
         let configuration: JobsAPIConfiguration
-        if let configured = try? JobsAPIConfiguration.from(infoDictionary: launchInfo), let configured {
+        if let configured = try? JobsAPIConfiguration.from(infoDictionary: launchInfo) {
             configuration = configured
         } else {
             configuration = JobsAPIConfiguration(

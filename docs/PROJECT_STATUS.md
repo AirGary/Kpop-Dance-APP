@@ -6,7 +6,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前可运行状态
 
-- SwiftUI App 可在 iOS 26.5 Simulator 编译、运行和完成首页冷启动测试。
+- SwiftUI App 已在 iOS 26.5 Simulator 目标完成无测试构建；Xcode 26.6 的测试观察器仍会触发 CoreSimulator 服务崩溃，需要后续环境复核。
 - 本地导入、视频副本、播放练习、本地 FastAPI、可恢复上传客户端和 Demo 分析界面已存在。
 - Google Cloud Stage 5B 基础已于 2026-07-16 部署到 `stage-lab-dev-gary-202607` 的新加坡区域。
 - 线上 API：`https://stage-lab-api-rf222fhruq-as.a.run.app`。
@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1-4 与 Task 6 代码已实现，当前等待 Task 4 真实检测门禁、Task 5 API 基线同步和 Task 6 Xcode/本地 API 联调。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1-4 与 Task 6 代码已实现，Task 6 已由 PR #15 合并，当前等待 Task 5 API 实现、Task 4 真实检测门禁和本地 API 联调。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -66,6 +66,12 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 当前验证：Task 4 聚焦测试 6 项通过；Task 3 媒体测试与 Task 4 聚焦测试合计 51 项通过。完整 Worker 测试在旧 `backend/.venv` 下为 76 项通过、1 项失败，失败是运行环境缺少 NumPy；应使用 Task 1 的 `.local-ai/venv/bin/python` 重跑，不把该环境失败计为模型或业务失败。
 
+#### Task：Stage 6 Task 5 FastAPI 两阶段分析编排（未实现，当前硬阻塞）
+
+- [ ] GitHub `main` 中没有 Task 5 的 coordinator、runner 或 analysis routes 实现，也没有对应远端分支/PR。
+- [ ] 因此本地 FastAPI 尚不能完成“上传完成 -> 候选列表 -> 选择舞者”的真实联调。
+- [ ] 必须先实现并验证 Task 5，不能直接开始 Task 7。
+
 #### Task：Stage 6 Task 6 iOS 真实分析接入（代码已实现，待 Xcode 运行验收）
 
 - [x] Swift DTO 与 HTTP 请求覆盖候选、目标选择、结果元数据、Bearer/配对令牌和相对路径安全。
@@ -73,6 +79,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [x] 真实分析页不再提供手动跳过；候选舞者页在真实任务下显示服务端候选和代表图，Fake/Preview 仍保留静态演示路径。
 - [x] SwiftData 增加可选的目标候选 ID、结果 SHA-256 和结果字节数，不保存候选图字节。
 - [ ] 在 CoreSimulator 服务恢复后运行 `./scripts/verify-ios.sh`，并联调本地 FastAPI Task 5 端点。
+- [x] Task 6 实现已由 GitHub PR #15 合并到 `main`；Xcode 26.6 Simulator 无测试构建通过。
+- [ ] Xcode 26.6 `xcodebuild test` 会触发 CoreSimulator 服务断开；PR #16 为兼容性修复，等待用户合并。
 
 ## 最近完成任务
 
