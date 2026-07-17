@@ -5,7 +5,10 @@ from api.app.ports.job_repository import (
     IdempotencyConflictError,
     JobNotFoundError,
     JobRecord,
+    JobStateConflictError,
 )
+from api.app.schemas.analysis import AnalysisJobState
+from api.app.schemas.jobs import JobResponse
 
 
 class InMemoryJobRepository:
@@ -45,6 +48,26 @@ class InMemoryJobRepository:
                 (record.owner_id, record.idempotency_key),
                 None,
             )
+
+    async def update_response(
+        self,
+        expected_state: AnalysisJobState,
+        response: JobResponse,
+    ) -> JobRecord:
+        async with self._lock:
+            record = self._jobs.get(response.id)
+            if record is None:
+                raise JobNotFoundError
+            if record.response.state != expected_state:
+                raise JobStateConflictError
+            updated = JobRecord(
+                owner_id=record.owner_id,
+                idempotency_key=record.idempotency_key,
+                request_hash=record.request_hash,
+                response=response,
+            )
+            self._jobs[response.id] = updated
+            return updated
 
     async def find_by_idempotency_key(
         self,

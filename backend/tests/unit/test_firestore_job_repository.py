@@ -10,7 +10,9 @@ from api.app.ports.job_repository import (
     IdempotencyConflictError,
     JobNotFoundError,
     JobRecord,
+    JobStateConflictError,
 )
+from api.app.schemas.analysis import AnalysisJobState
 from api.app.schemas.jobs import JobResponse
 from tests.fake_firestore import FakeFirestoreGateway
 
@@ -75,3 +77,19 @@ async def test_firestore_job_hides_foreign_owner_and_deletes_index() -> None:
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_firestore_job_updates_response_only_when_expected_state_matches() -> None:
+    repository = FirestoreJobRepository(FakeFirestoreGateway())
+    original = make_record()
+    await repository.create(original)
+    updated = original.response.model_copy(
+        update={"state": AnalysisJobState.UPLOADED}
+    )
+
+    stored = await repository.update_response(AnalysisJobState.DRAFT, updated)
+
+    assert stored.response == updated
+    with pytest.raises(JobStateConflictError):
+        await repository.update_response(AnalysisJobState.DRAFT, updated)
