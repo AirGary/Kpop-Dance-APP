@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 与 Task 2 已完成，Task 3 确定性媒体预检与分析代理待验收。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1、Task 2 与 Task 3 已完成，Task 4 尚未开始。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -50,10 +50,11 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 5B：Firebase Auth、Firestore、私有 Storage、真实双身份隔离与成本门禁。
 - Stage 6 Task 1：本地 AI 隔离运行环境、模型/依赖供应链门禁与真实单帧推理。
 - Stage 6 Task 2：持久化分析合约、owner/job 隔离工作区、原子文件仓库与 Job compare-and-set。
+- Stage 6 Task 3：确定性媒体预检与最高 720p/30fps、只降不升的原子分析代理。
 
 ## 最近完成任务
 
-### Task：Stage 6 Task 3 确定性媒体预检与分析代理（待验收）
+### Task：Stage 6 Task 3 确定性媒体预检与分析代理（已验收）
 
 **目标：** 为后续人物检测建立可重复、隐私安全的媒体输入门禁，输出固定时间基准且最高 720p/30fps 的 H.264/yuv420p 分析代理，原始素材保持不变。
 
@@ -251,7 +252,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 下一阶段建议
 
-Stage 6 Task 3 已完成实现、验证和独立复审，当前等待 GitHub 合并和用户验收。验收后才开始 Task 4 RTMDet-m 与 ByteTrack 候选舞者分析；Task 4 尚未启动。
+Stage 6 Task 3 已由 PR #12 合并并经用户验收。下一建议是 Task 4 RTMDet-m 与 ByteTrack 候选舞者分析；开始前必须单独确认范围、成本、测试和回退方式，Task 4 当前尚未启动。
 
 ## 阶段验收记录
 
@@ -266,6 +267,7 @@ Stage 6 Task 3 已完成实现、验证和独立复审，当前等待 GitHub 合
 - 2026-07-17：用户回复“已合并并验收 Task 2”；GitHub PR #10 合并提交 `ce3facd` 已核实，Task 2 正式标记为“已完成”，Task 3 尚未开始。
 - 2026-07-17：GitHub PR #11 合并提交 `72da1c4` 已核实；用户确认开始 Task 3，状态更新为“进行中”，尚无 Task 3 产品代码、用户视频读取或部署变更。
 - 2026-07-17：Task 3 媒体预检与原子分析代理已实现；媒体 `45` 项、Worker `71` 项和后端 `197` 项测试通过，最终审查无 P0/P1/P2，状态更新为“待验收”，尚未开始 Task 4。
+- 2026-07-17：用户回复“已合并并验收 Task 3”；GitHub PR #12 合并提交 `c631210` 已核实，Task 3 正式标记为“已完成”，Task 4 尚未开始。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -279,5 +281,5 @@ Stage 6 Task 3 已完成实现、验证和独立复审，当前等待 GitHub 合
 - Stage 6 Task 1 实现提交：`49c3f52`，PR #8 合并提交 `750e047`。
 - Stage 6 Task 2 实现提交：`a9be8f9`；安全与原子发布加固提交：`796f42e`、`31facdd`、`6a02bb2`、`fcce6b4`；PR #10 合并提交：`ce3facd`。
 - Stage 6 Task 2 验收记录：`1744cbf`，PR #11 合并提交：`72da1c4`。
-- Stage 6 Task 3 当前实现提交：`d0b487f`；安全加固提交：`089cf95`、`8ca0eec`。
-- 当前工作分支：`codex/stage6-task3-media-preflight`（Task 3 确定性媒体预检与分析代理）。
+- Stage 6 Task 3 实现提交：`d0b487f`；安全加固提交：`089cf95`、`8ca0eec`；PR #12 合并提交：`c631210`。
+- 当前工作分支：`codex/stage6-task3-acceptance`（仅记录 Task 3 验收状态）。
