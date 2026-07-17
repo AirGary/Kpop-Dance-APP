@@ -4,6 +4,7 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
+from threading import Lock
 from uuid import UUID
 
 from api.app.ports.analysis_workspace import UnsafeAnalysisWorkspacePathError
@@ -15,6 +16,8 @@ _SAFE_OWNER_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 class LocalAnalysisWorkspace:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
+        self._promotion_locks: dict[Path, Lock] = {}
+        self._promotion_locks_guard = Lock()
 
     def analysis_directory(self, owner_id: str, job_id: UUID) -> Path:
         return self._job_directory(owner_id, job_id) / "analysis"
@@ -38,8 +41,7 @@ class LocalAnalysisWorkspace:
         destination = self._job_directory(owner_id, job_id) / "source.mp4"
         return await asyncio.to_thread(self._promote, source, destination)
 
-    @staticmethod
-    def _promote(source: Path, destination: Path) -> Path:
+    def _promote(self, source: Path, destination: Path) -> Path:
         source = source.resolve(strict=True)
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists():
@@ -49,7 +51,10 @@ class LocalAnalysisWorkspace:
         except FileExistsError:
             return destination
         except OSError:
-            return LocalAnalysisWorkspace._copy_and_publish(source, destination)
+            with self._promotion_lock(destination):
+                if destination.exists():
+                    return destination
+                return self._copy_and_publish(source, destination)
         return destination
 
     @staticmethod
@@ -60,18 +65,39 @@ class LocalAnalysisWorkspace:
             dir=destination.parent,
         )
         temporary = Path(temporary_name)
+        destination_created = False
         try:
             with source.open("rb") as input_handle, os.fdopen(descriptor, "wb") as output_handle:
                 shutil.copyfileobj(input_handle, output_handle)
                 output_handle.flush()
                 os.fsync(output_handle.fileno())
             try:
-                os.link(temporary, destination)
+                destination_descriptor = os.open(
+                    destination,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
             except FileExistsError:
                 return destination
+            destination_created = True
+            with temporary.open("rb") as input_handle, os.fdopen(
+                destination_descriptor,
+                "wb",
+            ) as output_handle:
+                shutil.copyfileobj(input_handle, output_handle)
+                output_handle.flush()
+                os.fsync(output_handle.fileno())
             return destination
+        except Exception:
+            if destination_created:
+                destination.unlink(missing_ok=True)
+            raise
         finally:
             temporary.unlink(missing_ok=True)
+
+    def _promotion_lock(self, destination: Path) -> Lock:
+        with self._promotion_locks_guard:
+            return self._promotion_locks.setdefault(destination, Lock())
 
     def _upload_path(self, owner_id: str, upload_id: UUID) -> Path:
         if not _SAFE_OWNER_ID.fullmatch(owner_id):

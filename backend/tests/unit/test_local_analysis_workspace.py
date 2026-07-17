@@ -1,3 +1,4 @@
+import errno
 import os
 from pathlib import Path
 from uuid import UUID
@@ -63,6 +64,29 @@ async def test_workspace_copies_when_hard_link_is_unavailable(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_workspace_copies_when_filesystem_does_not_support_any_hard_links(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "objects"
+    source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"original video bytes")
+    workspace = LocalAnalysisWorkspace(root)
+
+    def unsupported_link(*_args, **_kwargs) -> None:
+        raise OSError(errno.EOPNOTSUPP, "hard links are not supported")
+
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.link",
+        unsupported_link,
+    )
+
+    destination = await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID)
+
+    assert destination.read_bytes() == source.read_bytes() == b"original video bytes"
+    assert destination.stat().st_ino != source.stat().st_ino
+    assert list(destination.parent.glob(".source.mp4.*.tmp")) == []
+
+
+@pytest.mark.asyncio
 async def test_workspace_keeps_existing_destination_when_hard_link_races(tmp_path, monkeypatch) -> None:
     root = tmp_path / "objects"
     source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
@@ -94,19 +118,24 @@ async def test_workspace_copy_race_preserves_first_publisher_and_cleans_temp(tmp
     source.write_bytes(b"upload source")
     workspace = LocalAnalysisWorkspace(root)
     destination = root / "owner-a" / str(JOB_ID) / "source.mp4"
-    link_calls = 0
+    real_open = os.open
 
-    def competing_link(_source: Path, target: Path) -> None:
-        nonlocal link_calls
-        link_calls += 1
-        if link_calls == 1:
-            raise OSError("cross-device link")
-        target.write_bytes(b"first publisher")
-        raise FileExistsError
+    def unavailable_link(*_args, **_kwargs) -> None:
+        raise OSError("cross-device link")
+
+    def competing_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        if Path(path) == destination and flags & os.O_EXCL:
+            destination.write_bytes(b"first publisher")
+            raise FileExistsError
+        return real_open(path, flags, mode)
 
     monkeypatch.setattr(
         "api.app.adapters.storage.local_analysis_workspace.os.link",
-        competing_link,
+        unavailable_link,
+    )
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.open",
+        competing_open,
     )
 
     assert await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID) == destination
