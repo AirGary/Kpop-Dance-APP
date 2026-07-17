@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -85,13 +85,11 @@ class UploadService:
         job_service: JobService,
         *,
         clock: Callable[[], datetime] | None = None,
-        on_completed: Callable[[str, UUID, UUID], Awaitable[None]] | None = None,
     ) -> None:
         self._repository = repository
         self._objects = object_store
         self._jobs = job_service
         self._clock = clock or (lambda: datetime.now(UTC))
-        self._on_completed = on_completed
         self._upload_locks: dict[UUID, asyncio.Lock] = {}
         self._session_creation_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._direct_objects: DirectUploadObjectStore | None = None
@@ -288,8 +286,6 @@ class UploadService:
             )
             if completed is None:
                 raise UploadCompletionInProgressError
-            if self._on_completed is not None:
-                await self._on_completed(owner_id, job.id, upload_id)
             return CompletedUpload(job=job, created=created)
 
     async def cleanup_expired(self) -> int:

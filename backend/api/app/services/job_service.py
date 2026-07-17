@@ -8,7 +8,6 @@ from api.app.ports.job_repository import (
     JobNotFoundError,
     JobRecord,
     JobRepository,
-    JobStateConflictError,
 )
 from api.app.schemas.errors import APIError
 from api.app.schemas.jobs import CreateJobRequest, JobResponse
@@ -60,19 +59,6 @@ class JobService:
         except JobNotFoundError as error:
             raise APIError(404, "job_not_found", "Job was not found.") from error
         return record.response
-
-    async def update_response(
-        self,
-        expected_state,
-        response: JobResponse,
-    ) -> JobResponse:
-        try:
-            stored = await self._repository.update_response(expected_state, response)
-        except JobNotFoundError as error:
-            raise APIError(404, "job_not_found", "Job was not found.") from error
-        except JobStateConflictError as error:
-            raise APIError(409, "job_state_conflict", "Job state changed concurrently.") from error
-        return stored.response
 
     async def delete_job(self, owner_id: str, job_id: UUID) -> None:
         try:

@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1-4、Task 5 API 编排骨架与 Task 6 代码已实现，Task 6 已由 PR #15 合并，当前等待 Task 5 真实模型联调、Task 4 真实检测门禁和 Task 5 重启恢复。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1-4 与 Task 6 代码已实现，Task 6 已由 PR #15 合并，当前等待 Task 5 API 实现、Task 4 真实检测门禁和本地 API 联调。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -66,16 +66,11 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 当前验证：Task 4 聚焦测试 6 项通过；Task 3 媒体测试与 Task 4 聚焦测试合计 51 项通过。完整 Worker 测试在旧 `backend/.venv` 下为 76 项通过、1 项失败，失败是运行环境缺少 NumPy；应使用 Task 1 的 `.local-ai/venv/bin/python` 重跑，不把该环境失败计为模型或业务失败。
 
-#### Task：Stage 6 Task 5 FastAPI 两阶段分析编排（API 骨架已实现，待真实模型联调）
+#### Task：Stage 6 Task 5 FastAPI 两阶段分析编排（未实现，当前硬阻塞）
 
-- [x] `local-ai` 环境接入本地工作区、上传完成回调、候选/目标/结果四个接口和受保护结果内容路径。
-- [x] 本地 runner 使用独立 `.local-ai/venv/bin/python` subprocess；worker 异常进入 `failedRecoverable`，不把上传请求误报为 500。
-- [x] API 与状态机测试、OpenAPI 合约和标准后端回归通过。
-- [ ] 使用真实 `.local-ai` 环境和 `82MAJOR Trophy` 视频返回非空候选列表。
-- [ ] 实现 `resume_pending()` 的重启恢复和 Task 7 目标分析结果。
+- [ ] GitHub `main` 中没有 Task 5 的 coordinator、runner 或 analysis routes 实现，也没有对应远端分支/PR。
+- [ ] 因此本地 FastAPI 尚不能完成“上传完成 -> 候选列表 -> 选择舞者”的真实联调。
 - [ ] 必须先实现并验证 Task 5，不能直接开始 Task 7。
-
-当前验证：`./scripts/verify-backend.sh` 为 198 项通过；本地 FastAPI smoke 已完成上传完成到候选查询，当前因 `.local-ai` 环境缺失进入 `failedRecoverable` 并返回空候选，不视为真实 AI 通过。
 
 #### Task：Stage 6 Task 6 iOS 真实分析接入（代码已实现，待 Xcode 运行验收）
 
