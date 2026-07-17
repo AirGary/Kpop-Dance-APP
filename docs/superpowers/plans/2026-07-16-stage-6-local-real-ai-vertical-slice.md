@@ -327,27 +327,27 @@ git commit -m "feat: orchestrate local AI analysis"
 - Produces: observable UI states for polling, real candidates, selection, retry, and result readiness.
 - Consumes: the Stage 5 upload-created `remoteJobId` and Stage 6 endpoints.
 
-- [ ] **Step 1: Write failing JSON and request tests**
+- [x] **Step 1: Write failing JSON and request tests**
 
 Verify paths, methods, bearer headers, idempotency keys, fractional timestamps, candidate arrays, result metadata, backend error mapping, cancellation, and that candidate image requests cannot escape the configured API origin.
 
-- [ ] **Step 2: Write failing UI model tests**
+- [x] **Step 2: Write failing UI model tests**
 
 Test polling from `detecting` to `awaitingTarget`, no navigation before candidates exist, deterministic selection idempotency key, retry after recoverable failure, and result-ready transition. Fake services remain injectable and explicitly labeled Demo.
 
-- [ ] **Step 3: Implement environment configuration**
+- [x] **Step 3: Implement environment configuration**
 
 Simulator defaults to `127.0.0.1:8000`. A real-device Debug scheme may inject `STAGE_LAB_API_BASE_URL` and a short-lived pairing token at launch. Release and Staging must reject HTTP local-AI configuration. Never hard-code a LAN IP or pairing token.
 
-- [ ] **Step 4: Replace fixed analysis actions only in real mode**
+- [x] **Step 4: Replace fixed analysis actions only in real mode**
 
 The real analysis screen polls the actual job; it cannot expose “完成分析，选择舞者” as a manual state skip. The picker renders representative images and confidence from the server. Keep static candidates only in Preview/Fake mode with a visible Demo badge.
 
-- [ ] **Step 5: Persist cloud/local analysis metadata safely**
+- [x] **Step 5: Persist cloud/local analysis metadata safely**
 
 Add migration-safe optional fields for selected candidate ID, package checksum, and package byte count. Do not store candidate image bytes in SwiftData.
 
-- [ ] **Step 6: Run iOS verification and commit**
+- [ ] **[in progress] Step 6: Run iOS verification and commit**
 
 Run `./scripts/verify-ios.sh`. Expected: unit tests, cold-start UI test, Staging build, and Release build pass.
 

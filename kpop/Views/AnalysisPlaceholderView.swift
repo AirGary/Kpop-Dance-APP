@@ -3,10 +3,12 @@ import SwiftUI
 struct AnalysisView: View {
     @EnvironmentObject private var router: AppRouter
     @Environment(\.jobsAPIClient) private var jobsAPIClient
+    @Environment(\.analysisService) private var analysisService
     @Environment(\.uploadRunner) private var uploadRunner
     @State private var connectionModel = AnalysisConnectionModel()
     @State private var uploadModel = UploadConnectionModel()
     @State private var showsCellularConfirmation = false
+    @State private var realAnalysisModel: RealAnalysisModel?
     let project: DanceProject
 
     var body: some View {
@@ -45,6 +47,10 @@ struct AnalysisView: View {
 
                 localBackendCard
 
+                if let realAnalysisModel {
+                    realAnalysisCard(realAnalysisModel)
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
                     StageSectionHeader(
                         eyebrow: "Pipeline",
@@ -63,7 +69,8 @@ struct AnalysisView: View {
                 .padding(AppUI.panelPadding)
                 .cardBackground()
 
-                VStack(spacing: 10) {
+                if realAnalysisModel == nil {
+                    VStack(spacing: 10) {
                     Button(project.phase == .failed ? "重试分析" : "开始/继续分析") {
                         setPhase(.analyzing)
                     }
@@ -86,9 +93,10 @@ struct AnalysisView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
+                    }
+                    .padding(AppUI.panelPadding)
+                    .cardBackground()
                 }
-                .padding(AppUI.panelPadding)
-                .cardBackground()
             }
             .padding(20)
         }
@@ -106,6 +114,16 @@ struct AnalysisView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("视频上传可能消耗较多流量。本次确认不会保存为全局设置。")
+        }
+        .task(id: project.remoteJobId) {
+            guard
+                let analysisService,
+                project.remoteJobId != nil,
+                realAnalysisModel == nil
+            else { return }
+            let model = RealAnalysisModel(service: analysisService)
+            realAnalysisModel = model
+            await model.start(project: project)
         }
     }
 
@@ -270,6 +288,67 @@ struct AnalysisView: View {
         }
         .padding(AppUI.panelPadding)
         .cardBackground()
+    }
+
+    private func realAnalysisCard(_ model: RealAnalysisModel) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            StageSectionHeader(
+                eyebrow: "REAL ANALYSIS",
+                title: "本地 AI 分析状态",
+                detail: "候选舞者和分析进度来自本地 FastAPI 与真实 Worker。"
+            )
+            switch model.state {
+            case .idle, .loading:
+                HStack { ProgressView(); Text("正在读取真实分析任务…") }
+            case .detecting(let snapshot):
+                analysisProgress(snapshot, title: "正在检测真实舞者")
+            case .awaitingTarget(let candidates):
+                Label(
+                    candidates.isEmpty ? "尚未得到有效候选舞者" : "已找到 \(candidates.count) 名候选舞者",
+                    systemImage: candidates.isEmpty ? "person.crop.circle.badge.questionmark" : "person.3.fill"
+                )
+                if !candidates.isEmpty {
+                    Button {
+                        router.replaceTop(with: .dancerPick(projectId: project.id))
+                    } label: {
+                        Label("选择目标舞者", systemImage: "figure.dance")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            case .selecting(let candidateID):
+                HStack { ProgressView(); Text("正在提交目标舞者 \(candidateID)…") }
+            case .analyzing(let snapshot):
+                analysisProgress(snapshot, title: "正在生成目标分析")
+            case .resultReady:
+                StatusBadge(text: "分析结果已就绪", systemImage: "checkmark.circle.fill", color: .green)
+            case .failed(let message, let recoverable):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                if recoverable {
+                    Button("重试读取状态") {
+                        Task { await model.start(project: project) }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(AppUI.panelPadding)
+        .cardBackground()
+    }
+
+    private func analysisProgress(_ snapshot: AnalysisJobSnapshot, title: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                ProgressView()
+                Text(title).font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(Int(snapshot.progress * 100))%")
+                    .font(.caption.monospacedDigit().weight(.bold))
+            }
+            ProgressView(value: snapshot.progress)
+                .tint(AppUI.violet)
+        }
     }
 
     private func connectionButton(title: String) -> some View {

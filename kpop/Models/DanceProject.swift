@@ -104,6 +104,7 @@ final class DanceProject {
     var sourceVideoPath: String?
     var videoDuration: Double = 0
     var selectedDancerName: String?
+    var selectedCandidateId: String?
     var mirrorEnabled: Bool
     var defaultPlaybackRate: Double
 
@@ -114,6 +115,8 @@ final class DanceProject {
     var uploadExpiresAt: Date?
     var analysisSchemaVersion: Int?
     var analysisPackageRelativePath: String?
+    var analysisPackageSHA256: String?
+    var analysisPackageByteCount: Int64?
     var lastPracticedAt: Date?
 
     var phaseRawValue: String
@@ -127,6 +130,7 @@ final class DanceProject {
         sourceVideoPath: String? = nil,
         videoDuration: Double = 0,
         selectedDancerName: String? = nil,
+        selectedCandidateId: String? = nil,
         mirrorEnabled: Bool = false,
         defaultPlaybackRate: Double = 1.0,
         phase: ProjectPhase = .created
@@ -139,6 +143,7 @@ final class DanceProject {
         self.sourceVideoPath = sourceVideoPath
         self.videoDuration = videoDuration
         self.selectedDancerName = selectedDancerName
+        self.selectedCandidateId = selectedCandidateId
         self.mirrorEnabled = mirrorEnabled
         self.defaultPlaybackRate = defaultPlaybackRate
         self.phaseRawValue = phase.rawValue

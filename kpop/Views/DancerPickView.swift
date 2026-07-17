@@ -2,8 +2,12 @@ import SwiftUI
 
 struct DancerPickView: View {
     @EnvironmentObject private var router: AppRouter
+    @Environment(\.analysisService) private var analysisService
+    @Environment(\.analysisAPIClient) private var analysisAPIClient
     let project: DanceProject
     @State private var selectedDancer: DancerOption?
+    @State private var selectedCandidateID: String?
+    @State private var realAnalysisModel: RealAnalysisModel?
 
     var body: some View {
         ScrollView {
@@ -17,14 +21,34 @@ struct DancerPickView: View {
                         detail: "锁定本次主要学习对象。完成后会直接生成新的练习时间轴。"
                     )
 
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(DanceProject.dancerOptions) { dancer in
-                            DancerOptionCard(
-                                dancer: dancer,
-                                isSelected: selectedDancer == dancer
-                            ) {
-                                selectedDancer = dancer
+                    if realAnalysisModel == nil {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(DanceProject.dancerOptions) { dancer in
+                                DancerOptionCard(
+                                    dancer: dancer,
+                                    isSelected: selectedDancer == dancer
+                                ) {
+                                    selectedDancer = dancer
+                                }
                             }
+                        }
+                    } else if !liveCandidates.isEmpty {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(liveCandidates) { candidate in
+                                LiveDancerOptionCard(
+                                    candidate: candidate,
+                                    imageURL: imageURL(for: candidate),
+                                    isSelected: selectedCandidateID == candidate.id
+                                ) {
+                                    selectedCandidateID = candidate.id
+                                }
+                            }
+                        }
+                    } else {
+                        HStack {
+                            ProgressView()
+                            Text("正在读取真实候选舞者…")
+                                .foregroundStyle(AppUI.inkSoft)
                         }
                     }
                 }
@@ -33,17 +57,27 @@ struct DancerPickView: View {
 
                 VStack(spacing: 10) {
                     Button {
-                        guard let selectedDancer else { return }
-                        project.selectedDancerName = selectedDancer.name
-                        project.phase = .readyToPractice
-                        project.updatedAt = Date()
-                        router.replaceTop(with: .practice(projectId: project.id))
+                        if let selectedCandidateID, let realAnalysisModel {
+                            Task {
+                                await realAnalysisModel.select(candidateID: selectedCandidateID, project: project)
+                                if case .resultReady = realAnalysisModel.state {
+                                    project.phase = .readyToPractice
+                                    project.updatedAt = Date()
+                                    router.replaceTop(with: .practice(projectId: project.id))
+                                }
+                            }
+                        } else if let selectedDancer {
+                            project.selectedDancerName = selectedDancer.name
+                            project.phase = .readyToPractice
+                            project.updatedAt = Date()
+                            router.replaceTop(with: .practice(projectId: project.id))
+                        }
                     } label: {
-                        Label("生成练习时间轴", systemImage: "timeline.selection")
+                        Label(realAnalysisModel == nil ? "生成练习时间轴" : "提交目标舞者分析", systemImage: "timeline.selection")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(selectedDancer == nil)
+                    .disabled(selectedDancer == nil && selectedCandidateID == nil)
 
                     Button {
                         project.phase = .analyzing
@@ -63,6 +97,67 @@ struct DancerPickView: View {
         .background(AppUI.background)
         .navigationTitle("选择舞者")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: project.remoteJobId) {
+            guard
+                let analysisService,
+                project.remoteJobId != nil,
+                realAnalysisModel == nil
+            else { return }
+            let model = RealAnalysisModel(service: analysisService)
+            realAnalysisModel = model
+            await model.start(project: project)
+        }
+    }
+
+    private var liveCandidates: [DancerCandidate] {
+        guard let realAnalysisModel, case .awaitingTarget(let candidates) = realAnalysisModel.state else {
+            return []
+        }
+        return candidates
+    }
+
+    private func imageURL(for candidate: DancerCandidate) -> URL? {
+        guard let firstPath = candidate.representativeImagePaths.first else { return nil }
+        guard let analysisAPIClient else { return nil }
+        return try? analysisAPIClient.contentURL(relativePath: firstPath)
+    }
+}
+
+private struct LiveDancerOptionCard: View {
+    let candidate: DancerCandidate
+    let imageURL: URL?
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let image): image.resizable().scaledToFill()
+                    default:
+                        ZStack { Color.black.opacity(0.08); Image(systemName: "figure.dance").font(.title) }
+                    }
+                }
+                .frame(height: 120)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                HStack {
+                    Text(candidate.displayName).font(.headline)
+                    Spacer()
+                    Text("\(Int(candidate.confidence * 100))%")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(AppUI.violet)
+                }
+                Text(candidate.positionLabel)
+                    .font(.caption)
+                    .foregroundStyle(AppUI.inkSoft)
+            }
+            .padding(10)
+            .background(isSelected ? AppUI.violet.opacity(0.12) : AppUI.panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(isSelected ? AppUI.violet : AppUI.divider, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }
 

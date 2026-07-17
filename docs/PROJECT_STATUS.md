@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1、Task 2 与 Task 3 已完成，Task 4 代码已实现，等待本机 AI 运行时和首条视频检测门禁。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1-4 与 Task 6 代码已实现，当前等待 Task 4 真实检测门禁、Task 5 API 基线同步和 Task 6 Xcode/本地 API 联调。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -52,6 +52,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 6 Task 2：持久化分析合约、owner/job 隔离工作区、原子文件仓库与 Job compare-and-set。
 - Stage 6 Task 3：确定性媒体预检与最高 720p/30fps、只降不升的原子分析代理。
 - Stage 6 Task 4（代码部分）：RTMDet-m 可替换检测器适配器、ByteTrack 风格多人关联、候选排序、归一化摘要和代表图发布 Worker。
+- Stage 6 Task 6（代码部分）：iOS 真实分析 API 客户端、轮询状态模型、候选舞者选择、代表图安全 URL、目标选择幂等键和结果元数据落盘字段。
 
 ### 当前进行中的任务
 
@@ -64,6 +65,14 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [ ] 完成 Worker 全量回归、模型设备/耗时/候选数量记录，并提交 GitHub PR。
 
 当前验证：Task 4 聚焦测试 6 项通过；Task 3 媒体测试与 Task 4 聚焦测试合计 51 项通过。完整 Worker 测试在旧 `backend/.venv` 下为 76 项通过、1 项失败，失败是运行环境缺少 NumPy；应使用 Task 1 的 `.local-ai/venv/bin/python` 重跑，不把该环境失败计为模型或业务失败。
+
+#### Task：Stage 6 Task 6 iOS 真实分析接入（代码已实现，待 Xcode 运行验收）
+
+- [x] Swift DTO 与 HTTP 请求覆盖候选、目标选择、结果元数据、Bearer/配对令牌和相对路径安全。
+- [x] 真实轮询状态覆盖检测、候选等待、目标分析、结果就绪和可恢复失败。
+- [x] 真实分析页不再提供手动跳过；候选舞者页在真实任务下显示服务端候选和代表图，Fake/Preview 仍保留静态演示路径。
+- [x] SwiftData 增加可选的目标候选 ID、结果 SHA-256 和结果字节数，不保存候选图字节。
+- [ ] 在 CoreSimulator 服务恢复后运行 `./scripts/verify-ios.sh`，并联调本地 FastAPI Task 5 端点。
 
 ## 最近完成任务
 
