@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 已完成，Task 2 待开始确认。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 已完成，Task 2 持久化分析合约与工作区进行中。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -36,6 +36,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-16：用户确认并合并 Stage 6 书面规格，允许进入实施计划阶段；尚未安装 AI 依赖或修改产品代码。
 - 2026-07-16：用户确认首版模型基线为 RTMDet-m + ByteTrack + RTMPose-m；接口必须可替换，Analysis Package 保持稳定，实施前核对代码与权重商业许可证，首版不使用 VideoMAE 或视频大模型替代逐帧追踪。
 - 2026-07-16：用户回复“已合并并确认实施计划”，Stage 6 正式进入实施；首个执行范围仅为 Python 3.11、FFmpeg、模型来源/许可证和单帧真实推理门禁，不启用云 GPU、不改产品 UI。
+- 2026-07-17：用户回复“已合并验收记录，确认开始 Task 2”，允许实现本地分析状态/DTO、原子文件仓库、owner/job 隔离工作区和 Job compare-and-set；不读取真实视频内容、不运行 AI、不修改 iOS UI、不创建云资源。
 
 ## 已完成阶段
 
@@ -49,6 +50,27 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 6 Task 1：本地 AI 隔离运行环境、模型/依赖供应链门禁与真实单帧推理。
 
 ## 最近完成任务
+
+### Task：Stage 6 Task 2 持久化分析合约与工作区（进行中）
+
+**目标：** 为后续真实媒体预检与人物分析建立可恢复、可隔离、模型无关的数据边界；API 只暴露相对内容路径，不暴露本机绝对路径。
+
+**Subtask 1：稳定 DTO 与状态合约**
+
+- [ ] 先写全部状态、候选舞者、目标选择、结果元数据和错误详情的失败测试。
+- [ ] 实现 Pydantic DTO 与跨端 JSON fixtures，保持 schema version `1`。
+
+**Subtask 2：持久化分析仓库**
+
+- [ ] 先写重启恢复、原子替换、owner 隔离、同一 not-found 和路径穿越失败测试。
+- [ ] 实现 `<OBJECT_STORAGE_ROOT>/<owner>/<job>/analysis/` 下的 JSON 持久化。
+
+**Subtask 3：工作区与 Job 状态转换**
+
+- [ ] 先写 hard-link、copy fallback、源文件不变和 compare-and-set 失败测试。
+- [ ] 实现上传提升与 InMemory/Firestore JobRepository 条件更新。
+
+**完成条件：** 聚焦测试、完整 `verify-backend.sh`、静态差异检查和独立代码审查全部通过；更新文档后提交 GitHub。**成本：** 仅本机 CPU/磁盘，云端费用 `0`。**安全风险：** owner/path 校验错误可能造成越权或路径穿越，必须以相同 not-found 与根目录 containment 测试阻断。**回退：** 本任务不迁移现有数据、不调用云 API，撤销本分支即可恢复。
 
 ### Task：Stage 6 Task 1 本地 AI 运行环境门禁（已验收）
 
@@ -178,7 +200,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 下一阶段建议
 
-下一步是等待用户确认开始 Stage 6 Task 2：定义持久化分析状态、稳定 DTO 和 owner/job 隔离工作区。Task 2 不运行人物模型、不读取真实舞蹈视频、不修改 iOS UI、不创建云资源或付费服务；验收以状态/DTO 合约、原子持久化、所有权隔离和现有后端回归通过为准。确认后才按测试先行实施；随后才进入媒体预检、真实候选舞者、目标追踪、姿态、动作规则、Analysis Package 和 App 播放器叠加。
+当前执行 Stage 6 Task 2：先完成稳定 DTO，再完成 owner 隔离原子仓库、工作区与 Job compare-and-set。Task 2 待验证并由用户验收后，才开始 Task 3 媒体预检与 720p/30fps 分析代理。
 
 ## 阶段验收记录
 
@@ -188,6 +210,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-16：用户回复“已合并并确认实施计划”，Stage 6 开始执行 Task 1。
 - 2026-07-16：Stage 6 Task 1 完整技术门禁通过，状态更新为“待验收”；尚未开始 Task 2。
 - 2026-07-17：用户回复“已合并并验收 Task 1”；GitHub PR #8 合并提交 `750e047` 已核实，Task 1 正式标记为“已完成”，Task 2 尚未开始。
+- 2026-07-17：用户确认开始 Task 2；状态更新为“进行中”，尚无 Task 2 产品代码或部署变更。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -199,4 +222,4 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 6 设计合并提交：`ff2350d`。
 - Stage 6 实施计划合并提交：`b0d5794`。
 - Stage 6 Task 1 实现提交：`49c3f52`，PR #8 合并提交 `750e047`。
-- 当前工作分支：`codex/stage6-task1-acceptance`（仅记录 Task 1 用户验收）。
+- 当前工作分支：`codex/stage6-task2-persistence`（Task 2 持久化分析合约与工作区）。
