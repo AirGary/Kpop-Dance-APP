@@ -55,6 +55,7 @@ class LocalAnalysisWorkspace:
                 if destination.exists():
                     return destination
                 return self._copy_and_publish(source, destination)
+            self._fsync_directory(destination.parent)
             return destination
 
     @staticmethod

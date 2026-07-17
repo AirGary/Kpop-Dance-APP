@@ -35,6 +35,50 @@ async def test_workspace_promotes_upload_by_hard_link_without_changing_source(tm
 
 
 @pytest.mark.asyncio
+async def test_workspace_hard_link_promotion_fsyncs_parent_directory(
+    tmp_path, monkeypatch
+) -> None:
+    root = tmp_path / "objects"
+    source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"original video bytes")
+    workspace = LocalAnalysisWorkspace(root)
+    destination = root / "owner-a" / str(JOB_ID) / "source.mp4"
+    parent = destination.parent
+    real_open = os.open
+    real_fsync = os.fsync
+    opened: list[tuple[Path, int, int]] = []
+    fsynced: list[int] = []
+
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = real_open(path, flags, mode)
+        opened.append((Path(path), flags, descriptor))
+        return descriptor
+
+    def tracked_fsync(descriptor: int) -> None:
+        fsynced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.open",
+        tracked_open,
+    )
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.fsync",
+        tracked_fsync,
+    )
+
+    assert await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID) == destination
+
+    directory_descriptors = [
+        descriptor
+        for path, flags, descriptor in opened
+        if path == parent and flags & os.O_DIRECTORY
+    ]
+    assert directory_descriptors[0] in fsynced
+
+
+@pytest.mark.asyncio
 async def test_workspace_copies_when_hard_link_is_unavailable(tmp_path, monkeypatch) -> None:
     root = tmp_path / "objects"
     source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
