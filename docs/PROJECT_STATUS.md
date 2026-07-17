@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 与 Task 2 已完成，Task 3 确定性媒体预检与分析代理进行中。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1 与 Task 2 已完成，Task 3 确定性媒体预检与分析代理待验收。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -53,26 +53,30 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 最近完成任务
 
-### Task：Stage 6 Task 3 确定性媒体预检与分析代理（进行中）
+### Task：Stage 6 Task 3 确定性媒体预检与分析代理（待验收）
 
 **目标：** 为后续人物检测建立可重复、隐私安全的媒体输入门禁，输出固定时间基准且最高 720p/30fps 的 H.264/yuv420p 分析代理，原始素材保持不变。
 
 **Subtask 1：合法合成媒体与失败契约**
 
-- [ ] 用 FFmpeg 生成短时测试图案，覆盖高分辨率高帧率、低分辨率低帧率、旋转、无音频、仅音频、损坏字节和超时长元数据。
-- [ ] 先写稳定错误码、报告字段和代理规格失败测试，不读取用户舞蹈视频。
+- [x] 用 FFmpeg 生成短时测试图案，覆盖高分辨率高帧率、低分辨率低帧率、旋转、无音频、仅音频、损坏字节和超时长元数据。
+- [x] 先写稳定错误码、报告字段和代理规格失败测试，不读取用户舞蹈视频。
 
 **Subtask 2：严格媒体预检**
 
-- [ ] 使用 argv 调用 FFprobe 并严格解析 JSON、分数帧率和旋转元数据，不经过 shell 插值。
-- [ ] 拒绝损坏、无视频轨、超过 6 分钟和非 H.264/HEVC，用户可见错误不包含文件名或绝对路径。
+- [x] 使用 argv 调用 FFprobe 并严格解析 JSON、分数帧率和旋转元数据，不经过 shell 插值。
+- [x] 拒绝损坏、无视频轨、超过 6 分钟、超过 2 GiB 和非 H.264/HEVC，用户可见错误不包含文件名或绝对路径。
 
 **Subtask 3：只降不升的原子代理**
 
-- [ ] 高于规格时降至最高 720p/30fps；540p24 等低规格输入保持尺寸和帧率，不升格。
-- [ ] 输出 H.264/yuv420p、从零开始的稳定时间基准；失败不留下半成品，成功后重新 FFprobe 验证。
+- [x] 高于规格时降至最高 720p/30fps；540p24 等低规格输入保持尺寸和帧率，不升格。
+- [x] 输出 H.264/yuv420p、从零开始的稳定时间基准；失败不留下半成品，成功后重新 FFprobe 验证。
 
 **完成条件：** 媒体聚焦测试、完整 Worker 测试、`verify-local-ai.sh`、后端回归、静态检查和独立代码审查全部通过；更新文档后提交 GitHub。**成本：** 仅本机 CPU/磁盘，云端费用 `0`。**安全风险：** 恶意媒体、路径泄露、shell 注入和半成品代理必须由无 shell argv、稳定错误、超时与原子发布测试阻断。**回退：** 不迁移数据、不修改源视频、不调用云 API；删除生成代理并撤销本分支即可恢复。
+
+实际结果：Task 3 已实现 MP4/MOV/M4V、H.264/HEVC、6 分钟和 2 GiB 门禁，严格解析 VFR 双帧率、旋转、默认视频/音频轨与起止时间。代理只降不升，输出 H.264/yuv420p，并在发布前复核尺寸、帧率、视频和音频完整性。并发发布使用 job 专属目标文件锁和 first-writer-wins；同一目标必须绑定不可变 job/source，后续调用仍预检源文件并返回已验证代理。实现未读取用户视频、未运行人物分析、未修改 iOS/API、未创建云资源。
+
+与原计划差异：为已有 2 GiB 上限新增稳定错误码 `file_size_exceeded`，已同步到实施计划和 README；这是更明确的客户端可处理错误，不改变输入上限。
 
 ### Task：Stage 6 Task 2 持久化分析合约与工作区（已验收）
 
@@ -164,6 +168,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 7. Stage 6 当前本地 Worker 仅读取生成的测试帧；模型、虚拟环境、锁文件和能力报告位于 Git 忽略的 `.local-ai/`，尚未读取用户舞蹈视频或接入 API。
 8. Task 2 将分析状态和结果 JSON 原子保存在 `<OBJECT_STORAGE_ROOT>/<owner>/<job>/analysis/`；调用者只能使用受校验的 owner、job 和相对内容路径，重启后可从磁盘恢复。
 9. 本地上传提升从 `<OBJECT_STORAGE_ROOT>/<owner>/uploads/<upload>/source.mp4` 创建到任务工作区的不可覆盖副本；Job 状态通过 compare-and-set 更新，状态不匹配时不写入。
+10. Task 3 对 job 工作区源视频执行 FFprobe 门禁，再在同目录临时文件中生成最高 720p/30fps 代理；完整性复核、文件同步和原子替换成功后才暴露 `proxy.mp4`，失败保留既有有效代理。
 
 ## 技术栈与架构摘要
 
@@ -171,7 +176,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - API：Python 3.13、FastAPI、Pydantic、Firebase Admin SDK。
 - 云端：Cloud Run、Firestore、Cloud Storage、Artifact Registry、Terraform。
 - 当前容器：`sha256:3a933b0562e8aaa10b0981e12f35a90f3449b5282a60ea0019ce2b1fe3d68f58`。
-- 本地 AI 基线：Python 3.11.15、FFmpeg 8.1.2、PyTorch 2.13.0、MMCV 2.1.0、MMDetection 3.3.0、MMPose 1.3.2；RTMDet-m 与 RTMPose-m 单帧 CPU 推理通过，ByteTrack 与音乐分析尚未实施。
+- 本地 AI 基线：Python 3.11.15、FFmpeg 8.1.2、PyTorch 2.13.0、MMCV 2.1.0、MMDetection 3.3.0、MMPose 1.3.2；媒体预检和 720p/30fps 分析代理已完成，RTMDet-m 与 RTMPose-m 单帧 CPU 推理通过，ByteTrack 与音乐分析尚未实施。
 
 ## 测试与验证记录
 
@@ -198,6 +203,15 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - `git diff --check ee48f5a..HEAD`：通过，无空白错误。
 - 初次独立审查发现的任意源路径越权、并发覆盖、固定临时文件冲突、NaN/Inf 和目录持久化风险均已修复并增加回归测试；最终独立复审 `P0/P1/P2` 均为 `0`。
 - 本任务未运行 iOS、真实视频、AI 模型或云环境测试，因为改动仅限后端本地持久化边界，未修改相应运行链路。
+
+### 2026-07-17 Stage 6 Task 3
+
+- `.local-ai/venv/bin/python -m pytest backend/workers/analysis/tests/test_media.py -q`：`45` 项通过，`0` 失败；fixtures 全部由 FFmpeg 临时生成，未读取或提交用户视频。
+- `./scripts/verify-local-ai.sh`：Worker `71` 项通过，`0` 失败；RTMDet-m/RTMPose-m CPU 探针继续通过，最终探针耗时 `4.876` 秒。
+- `./scripts/verify-backend.sh`：`197` 项通过，`0` 失败，`1` 个既有 Starlette/httpx 弃用警告。
+- Python `compileall`、fixture/验证脚本 `bash -n` 和 `git diff --check`：通过。
+- 三轮独立审查发现的 VFR 绕过、并发报告错配、2 GiB/容器、多流选择、视频/音频完整性、动态超时和幂等源预检问题均已修复；最终代码复审 `P0/P1/P2` 均为 `0`。
+- 未执行 iOS、真实舞蹈视频、Linux 或云环境测试，因为本任务未修改这些链路；6 分钟真实 4K/HEVC 转码耗时仍需后续性能样本验证。
 
 ### 2026-07-16 真实云环境
 
@@ -227,16 +241,17 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - **已解决：** 两个真实 Firebase 临时身份的线上所有权隔离测试通过，测试身份、任务和临时 IAM 授权已清理。
 - **不可逆配置，已确认：** Identity Platform 项目配置初始化后不能删除；Terraform 使用 `prevent_destroy`，且本阶段不开放 Email、Phone、Anonymous 登录。
 - **产品缺口：** iOS 尚未接入 Sign in with Apple 和生产 Firebase Token，因此当前 App 不能完成正式云端登录上传流程。
-- **功能缺口：** 没有真实 AI 分析，当前仅完成云端数据基础。
+- **功能缺口：** 尚未完成真实视频的人物检测、ByteTrack、目标姿态和动作分段；当前只完成真实单帧模型门禁、媒体预检与分析代理，App 仍没有可体验的端到端真实 AI 结果。
 - **阶段变更：** 用户登录与正式云上传联调已延期；Stage 6 先解决真实 AI 成品闭环。
 - **已缓解：** RTMDet-m/RTMPose-m 已在 Apple Silicon 完成 CPU 单帧真实推理；MPS 未通过整组门禁，当前稳定设备固定为 CPU，后续性能验收不能假设 GPU 加速。
 - **已缓解：** Task 2 的 owner/path 隔离、路径穿越、并发发布、原子写入、重启恢复、非有限浮点数和 Job CAS 已有自动化回归保护；当前仅完成本地文件实现，尚未通过 API 暴露。
+- **已缓解：** Task 3 已对 shell 注入、路径泄露、VFR 上限绕过、超大文件、错误容器、多流、截断音视频和并发发布增加自动化保护；当前只在 macOS 27/FFmpeg 8.1.2 验证，Linux 与真实 6 分钟性能尚未验证。
 - **商品化法律风险：** OpenMMLab 代码与 checkpoint artifact 许可证门禁通过，但当前官方检测/姿态权重的训练数据包含 COCO、Objects365 和 Body7 来源。发布商业版本前必须完成训练数据与模型权重的专项法律复核；本地技术 Demo 通过不等于 App Store 法律批准。
 - Terraform state 当前只保存在主检出目录本机；丢失会增加基础设施恢复难度，需要后续迁移到受保护的远端 state。
 
 ## 下一阶段建议
 
-当前执行 Stage 6 Task 3：先以合法合成 fixtures 固定媒体预检与代理契约，再实现严格 FFprobe 和只降不升的 FFmpeg 代理。Task 3 待完整验证并由用户验收后，才开始 Task 4 RTMDet-m 与 ByteTrack 候选舞者分析。
+Stage 6 Task 3 已完成实现、验证和独立复审，当前等待 GitHub 合并和用户验收。验收后才开始 Task 4 RTMDet-m 与 ByteTrack 候选舞者分析；Task 4 尚未启动。
 
 ## 阶段验收记录
 
@@ -250,6 +265,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-17：Task 2 稳定 DTO、原子文件仓库、隔离工作区与 Job CAS 已实现；聚焦 `58` 项和后端全量 `197` 项测试通过，状态更新为“待验收”，尚未开始 Task 3。
 - 2026-07-17：用户回复“已合并并验收 Task 2”；GitHub PR #10 合并提交 `ce3facd` 已核实，Task 2 正式标记为“已完成”，Task 3 尚未开始。
 - 2026-07-17：GitHub PR #11 合并提交 `72da1c4` 已核实；用户确认开始 Task 3，状态更新为“进行中”，尚无 Task 3 产品代码、用户视频读取或部署变更。
+- 2026-07-17：Task 3 媒体预检与原子分析代理已实现；媒体 `45` 项、Worker `71` 项和后端 `197` 项测试通过，最终审查无 P0/P1/P2，状态更新为“待验收”，尚未开始 Task 4。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -263,4 +279,5 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 6 Task 1 实现提交：`49c3f52`，PR #8 合并提交 `750e047`。
 - Stage 6 Task 2 实现提交：`a9be8f9`；安全与原子发布加固提交：`796f42e`、`31facdd`、`6a02bb2`、`fcce6b4`；PR #10 合并提交：`ce3facd`。
 - Stage 6 Task 2 验收记录：`1744cbf`，PR #11 合并提交：`72da1c4`。
+- Stage 6 Task 3 当前实现提交：`d0b487f`；安全加固提交：`089cf95`、`8ca0eec`。
 - 当前工作分支：`codex/stage6-task3-media-preflight`（Task 3 确定性媒体预检与分析代理）。

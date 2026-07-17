@@ -122,6 +122,20 @@ empty. This evidence is not a complete commercial legal opinion. Training-data
 provenance and final transitive notices remain a separate gate before
 distribution; local technical approval is not App Store legal approval.
 
+### Media preflight and analysis proxy
+
+`stage_lab_analysis.media` accepts MP4, MOV, or M4V files containing H.264 or
+HEVC video, up to 6 minutes and 2 GiB. It uses FFprobe argv without a shell and
+returns path-free stable errors, including `file_size_exceeded`. The analysis
+proxy is H.264/yuv420p, at most 1280x720 or 720x1280 and at most 30 fps; lower
+resolution and lower frame-rate input is never upscaled.
+
+Proxy publication is atomic and destination-idempotent. A persistent local
+file lock makes the first valid writer win for a job-specific destination;
+later calls still preflight their source, then return the verified existing
+proxy. Generated test media is synthetic and temporary, and no media fixture
+or user video is committed to Git.
+
 ## Local Production Container Check
 
 Build the same Linux architecture used by Cloud Run:
