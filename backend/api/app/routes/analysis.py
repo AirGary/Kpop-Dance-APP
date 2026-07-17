@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 
 from api.app.ports.auth import AuthenticatedUser
 from api.app.routes.identity import authenticated_user
+from api.app.routes.jobs import idempotency_key
 from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResponse, SelectTargetRequest
 from api.app.schemas.errors import APIError
 
@@ -21,11 +22,17 @@ async def dancers(job_id: UUID, user: Annotated[AuthenticatedUser, Depends(authe
 
 
 @router.post("/{job_id}/target")
-async def select_target(job_id: UUID, payload: SelectTargetRequest, user: Annotated[AuthenticatedUser, Depends(authenticated_user)], request: Request):
+async def select_target(
+    job_id: UUID,
+    payload: SelectTargetRequest,
+    user: Annotated[AuthenticatedUser, Depends(authenticated_user)],
+    key: Annotated[str, Depends(idempotency_key)],
+    request: Request,
+):
     coordinator = request.app.state.container.analysis_coordinator
     if coordinator is None:
         raise APIError(503, "analysis_unavailable", "Local analysis is not enabled.")
-    return await coordinator.select_target(user.user_id, job_id, payload.candidate_id)
+    return await coordinator.select_target(user.user_id, job_id, payload.candidate_id, key)
 
 
 @router.get("/{job_id}/result", response_model=AnalysisResultResponse)
@@ -49,4 +56,3 @@ async def result_content(job_id: UUID, user: Annotated[AuthenticatedUser, Depend
     if not path.is_file():
         raise APIError(404, "result_not_found", "Analysis result was not found.")
     return FileResponse(path, media_type="application/zip")
-
