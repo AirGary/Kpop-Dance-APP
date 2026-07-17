@@ -13,7 +13,6 @@ class Settings(BaseModel):
     google_cloud_project: str | None = None
     source_bucket_name: str | None = None
     result_bucket_name: str | None = None
-    local_ai_model_root: Path | None = None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -28,5 +27,4 @@ class Settings(BaseModel):
             google_cloud_project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
             source_bucket_name=os.environ.get("SOURCE_BUCKET_NAME"),
             result_bucket_name=os.environ.get("RESULT_BUCKET_NAME"),
-            local_ai_model_root=(Path(os.environ["LOCAL_AI_MODEL_ROOT"]) if os.environ.get("LOCAL_AI_MODEL_ROOT") else None),
         )

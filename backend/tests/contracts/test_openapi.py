@@ -17,8 +17,4 @@ def test_openapi_exposes_only_approved_operations(client):
         ("HEAD", "/v1/uploads/{upload_id}/content"),
         ("PUT", "/v1/uploads/{upload_id}/content"),
         ("POST", "/v1/uploads/{upload_id}/complete"),
-        ("GET", "/v1/jobs/{job_id}/dancers"),
-        ("POST", "/v1/jobs/{job_id}/target"),
-        ("GET", "/v1/jobs/{job_id}/result"),
-        ("GET", "/v1/jobs/{job_id}/result/content"),
     }
