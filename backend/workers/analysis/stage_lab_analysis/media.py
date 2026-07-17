@@ -23,6 +23,7 @@ MIN_TRANSCODE_TIMEOUT_SECONDS = 180
 MAX_TRANSCODE_TIMEOUT_SECONDS = 3600
 SUPPORTED_VIDEO_CODECS = frozenset({"h264", "hevc"})
 SUPPORTED_CONTAINER_NAMES = frozenset({"mov", "mp4"})
+SUPPORTED_SOURCE_SUFFIXES = frozenset({".mp4", ".mov", ".m4v"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,9 @@ class _MediaDetails:
     selected_stream_index: int
     video_start_time: float
     video_duration_seconds: float
+    audio_stream_index: int | None
+    audio_start_time: float | None
+    audio_duration_seconds: float | None
 
 
 def _positive_float(value: object) -> float:
@@ -186,6 +190,13 @@ def _is_default_stream(stream: dict[str, Any]) -> bool:
     return isinstance(disposition, dict) and disposition.get("default") == 1
 
 
+def _stream_index(stream: dict[str, Any]) -> int:
+    index = stream.get("index")
+    if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+        raise ValueError
+    return index
+
+
 def _inspect(source: Path) -> _MediaDetails:
     payload = _run_probe(source)
     streams = payload.get("streams")
@@ -213,6 +224,15 @@ def _inspect(source: Path) -> _MediaDetails:
     video_stream = next(
         (stream for stream in video_streams if _is_default_stream(stream)),
         video_streams[0],
+    )
+    audio_streams = [
+        stream
+        for stream in streams
+        if isinstance(stream, dict) and stream.get("codec_type") == "audio"
+    ]
+    audio_stream = next(
+        (stream for stream in audio_streams if _is_default_stream(stream)),
+        audio_streams[0] if audio_streams else None,
     )
 
     codec = video_stream.get("codec_name")
@@ -252,23 +272,32 @@ def _inspect(source: Path) -> _MediaDetails:
         video_start_time = (
             0.0 if raw_start_time in (None, "N/A") else _finite_float(raw_start_time)
         )
-        selected_stream_index = video_stream.get("index")
-        if (
-            isinstance(selected_stream_index, bool)
-            or not isinstance(selected_stream_index, int)
-            or selected_stream_index < 0
-        ):
-            raise ValueError
+        selected_stream_index = _stream_index(video_stream)
+        if audio_stream is None:
+            audio_stream_index = None
+            audio_start_time = None
+            audio_duration = None
+        else:
+            audio_stream_index = _stream_index(audio_stream)
+            raw_audio_start = audio_stream.get("start_time")
+            audio_start_time = (
+                0.0
+                if raw_audio_start in (None, "N/A")
+                else _finite_float(raw_audio_start)
+            )
+            raw_audio_duration = audio_stream.get("duration")
+            audio_duration = _positive_float(
+                raw_audio_duration
+                if raw_audio_duration not in (None, "N/A")
+                else format_duration
+            )
     except (TypeError, ValueError, OverflowError, ZeroDivisionError) as error:
         raise MediaError("media_corrupt") from error
 
     if duration > MAX_DURATION_SECONDS:
         raise MediaError("duration_exceeded")
 
-    has_audio = any(
-        isinstance(stream, dict) and stream.get("codec_type") == "audio"
-        for stream in streams
-    )
+    has_audio = audio_stream is not None
     pixel_format = video_stream.get("pix_fmt")
     return _MediaDetails(
         report=MediaReport(
@@ -288,11 +317,22 @@ def _inspect(source: Path) -> _MediaDetails:
         selected_stream_index=selected_stream_index,
         video_start_time=video_start_time,
         video_duration_seconds=video_duration,
+        audio_stream_index=audio_stream_index,
+        audio_start_time=audio_start_time,
+        audio_duration_seconds=audio_duration,
     )
 
 
+def _validate_source_suffix(source: Path) -> None:
+    if source.suffix.lower() not in SUPPORTED_SOURCE_SUFFIXES:
+        raise MediaError("codec_unsupported")
+
+
 def preflight(source: Path) -> MediaReport:
-    return _inspect(Path(source)).report
+    source = Path(source)
+    details = _inspect(source)
+    _validate_source_suffix(source)
+    return details.report
 
 
 def _display_dimensions(report: MediaReport) -> tuple[int, int]:
@@ -340,8 +380,11 @@ def _transcode(source: Path, temporary: Path, details: _MediaDetails) -> None:
         str(source),
         "-map",
         f"0:{details.selected_stream_index}",
-        "-map",
-        "0:a:0?",
+    ]
+    if details.audio_stream_index is not None:
+        argv.extend(["-map", f"0:{details.audio_stream_index}"])
+    argv.extend(
+        [
         "-vf",
         _video_filter(report),
         "-c:v",
@@ -352,7 +395,8 @@ def _transcode(source: Path, temporary: Path, details: _MediaDetails) -> None:
         "veryfast",
         "-map_metadata",
         "-1",
-    ]
+        ]
+    )
     if report.has_audio:
         argv.extend(
             [
@@ -371,7 +415,7 @@ def _transcode(source: Path, temporary: Path, details: _MediaDetails) -> None:
             capture_output=True,
             text=True,
             shell=False,
-            timeout=_transcode_timeout_seconds(details.video_duration_seconds),
+            timeout=_transcode_timeout_seconds(details.report.duration_seconds),
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise MediaError("ffmpeg_failed") from error
@@ -389,13 +433,26 @@ def _validate_proxy(source: _MediaDetails, proxy: _MediaDetails) -> None:
         0.1,
         2.0 / min(source_report.fps, proxy_report.fps),
     )
+    audio_invalid = False
+    if source.audio_stream_index is not None:
+        audio_invalid = (
+            proxy.audio_stream_index is None
+            or proxy.audio_start_time is None
+            or proxy.audio_duration_seconds is None
+            or source.audio_duration_seconds is None
+            or abs(proxy.audio_start_time) > 0.05
+            or abs(proxy.audio_duration_seconds - source.audio_duration_seconds) > 0.05
+        )
     if (
         proxy_report.fps > min(source_report.fps, 30.0)
         or display_width > source_display_width
         or display_height > source_display_height
         or proxy_report.has_audio != source_report.has_audio
+        or abs(proxy_report.duration_seconds - source_report.duration_seconds)
+        > duration_tolerance
         or abs(proxy.video_duration_seconds - source.video_duration_seconds)
         > duration_tolerance
+        or audio_invalid
     ):
         raise MediaError("ffmpeg_failed")
 
@@ -414,6 +471,10 @@ def _validate_general_proxy(details: _MediaDetails) -> None:
         or report.fps > 30.0
         or any(rate > 30.0 for rate in details.frame_rates)
         or abs(details.video_start_time) > max(0.05, 1.0 / report.fps)
+        or (
+            details.audio_start_time is not None
+            and abs(details.audio_start_time) > 0.05
+        )
     ):
         raise MediaError("ffmpeg_failed")
 
@@ -450,6 +511,8 @@ def create_proxy(source: Path, destination: Path) -> MediaReport:
     destination = Path(destination)
     if source.resolve() == destination.resolve():
         raise MediaError("ffmpeg_failed")
+    source_details = _inspect(source)
+    _validate_source_suffix(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with _destination_lock(destination):
         if destination.exists():
@@ -460,7 +523,6 @@ def create_proxy(source: Path, destination: Path) -> MediaReport:
             except MediaError:
                 pass
 
-        source_details = _inspect(source)
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{destination.name}.tmp-",
             suffix=".mp4",

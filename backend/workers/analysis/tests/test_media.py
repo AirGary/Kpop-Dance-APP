@@ -127,6 +127,29 @@ def test_preflight_rejects_h264_in_matroska_container(
     assert_media_error(error, "codec_unsupported")
 
 
+@pytest.mark.parametrize("suffix", [".3gp", ".3g2", ".mj2"])
+def test_preflight_rejects_mov_demuxer_with_disallowed_source_suffix(
+    media_fixtures: Path, tmp_path: Path, suffix: str
+) -> None:
+    source = tmp_path / f"clip{suffix}"
+    source.write_bytes((media_fixtures / "no-audio.mp4").read_bytes())
+
+    with pytest.raises(MediaError) as error:
+        preflight(source)
+
+    assert_media_error(error, "codec_unsupported")
+
+
+@pytest.mark.parametrize("suffix", [".MP4", ".MOV", ".M4V"])
+def test_preflight_allows_case_insensitive_product_suffixes(
+    media_fixtures: Path, tmp_path: Path, suffix: str
+) -> None:
+    source = tmp_path / f"clip{suffix}"
+    source.write_bytes((media_fixtures / "no-audio.mp4").read_bytes())
+
+    assert preflight(source).video_codec == "h264"
+
+
 def _multi_stream_response() -> dict[str, object]:
     return {
         "streams": [
@@ -153,6 +176,20 @@ def _multi_stream_response() -> dict[str, object]:
                 "start_time": "0",
                 "duration": "1.0",
                 "disposition": {"attached_pic": 0, "default": 1},
+            },
+            {
+                "index": 3,
+                "codec_type": "audio",
+                "start_time": "0",
+                "duration": "1.0",
+                "disposition": {"default": 0},
+            },
+            {
+                "index": 7,
+                "codec_type": "audio",
+                "start_time": "0",
+                "duration": "1.0",
+                "disposition": {"default": 1},
             },
         ],
         "format": {"format_name": MOV_FORMAT_NAME, "duration": "1.0"},
@@ -201,7 +238,14 @@ def test_create_proxy_maps_selected_absolute_video_stream_index(
                     "start_time": "0",
                     "duration": "1.0",
                     "disposition": {"attached_pic": 0, "default": 1},
-                }
+                },
+                {
+                    "index": 1,
+                    "codec_type": "audio",
+                    "start_time": "0",
+                    "duration": "1.0",
+                    "disposition": {"default": 1},
+                },
             ],
             "format": {"format_name": MOV_FORMAT_NAME, "duration": "1.0"},
         }
@@ -226,7 +270,7 @@ def test_create_proxy_maps_selected_absolute_video_stream_index(
 
     create_proxy(source, destination)
 
-    assert mapped_streams[0] == "0:5"
+    assert mapped_streams == ["0:5", "0:7"]
 
 
 def test_preflight_rejects_unsupported_codec_without_leaking_probe_data(
@@ -651,7 +695,15 @@ def test_create_proxy_rejects_incomplete_output_before_publish(
             }
         ]
         if has_audio:
-            streams.append({"index": 1, "codec_type": "audio"})
+            streams.append(
+                {
+                    "index": 1,
+                    "codec_type": "audio",
+                    "start_time": "0",
+                    "duration": duration,
+                    "disposition": {"default": 1},
+                }
+            )
         return json.dumps(
             {
                 "streams": streams,
@@ -688,6 +740,76 @@ def test_create_proxy_rejects_incomplete_output_before_publish(
     assert "private stderr" not in str(error.value)
 
 
+@pytest.mark.parametrize(
+    ("proxy_audio_duration", "proxy_audio_start"),
+    [("0.20", "0"), ("1.0", "1.0")],
+    ids=["audio-truncated", "audio-nonzero-start"],
+)
+def test_create_proxy_rejects_incomplete_audio_before_publish(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    proxy_audio_duration: str,
+    proxy_audio_start: str,
+) -> None:
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source")
+    destination = tmp_path / "existing.mp4"
+    destination.write_bytes(b"existing")
+    transcoded = False
+
+    def payload(audio_duration: str, audio_start: str) -> str:
+        return json.dumps(
+            {
+                "streams": [
+                    {
+                        "index": 0,
+                        "codec_type": "video",
+                        "codec_name": "h264",
+                        "pix_fmt": "yuv420p",
+                        "width": 640,
+                        "height": 360,
+                        "avg_frame_rate": "24/1",
+                        "r_frame_rate": "24/1",
+                        "start_time": "0",
+                        "duration": "1.0",
+                    },
+                    {
+                        "index": 7,
+                        "codec_type": "audio",
+                        "start_time": audio_start,
+                        "duration": audio_duration,
+                        "disposition": {"default": 1},
+                    },
+                ],
+                "format": {"format_name": MOV_FORMAT_NAME, "duration": "1.0"},
+            }
+        )
+
+    def fake_run(argv, **kwargs):
+        nonlocal transcoded
+        if Path(argv[0]).name == "ffmpeg":
+            transcoded = True
+            Path(argv[-1]).write_bytes(b"proxy")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        probed = Path(argv[-1])
+        if probed == destination and not transcoded:
+            return subprocess.CompletedProcess(argv, 1, "", "invalid old file")
+        response = (
+            payload("1.0", "0")
+            if probed == source
+            else payload(proxy_audio_duration, proxy_audio_start)
+        )
+        return subprocess.CompletedProcess(argv, 0, response, "private stderr")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(MediaError) as error:
+        create_proxy(source, destination)
+
+    assert_media_error(error, "ffmpeg_failed")
+    assert destination.read_bytes() == b"existing"
+
+
 def test_transcode_timeout_scales_for_six_minutes_and_has_hard_cap(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -710,7 +832,7 @@ def test_transcode_timeout_scales_for_six_minutes_and_has_hard_cap(
                         "avg_frame_rate": "24/1",
                         "r_frame_rate": "24/1",
                         "start_time": "0",
-                        "duration": "360.0",
+                        "duration": "1.0",
                     }
                 ],
                 "format": {
@@ -733,6 +855,60 @@ def test_transcode_timeout_scales_for_six_minutes_and_has_hard_cap(
 
     assert observed_timeouts == [3600]
     assert media_module._transcode_timeout_seconds(10_000) == 3600
+
+
+def test_create_proxy_rejects_truncated_total_duration_before_publish(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"source")
+    destination = tmp_path / "existing.mp4"
+    destination.write_bytes(b"existing")
+    transcoded = False
+
+    def payload(format_duration: str) -> str:
+        return json.dumps(
+            {
+                "streams": [
+                    {
+                        "index": 0,
+                        "codec_type": "video",
+                        "codec_name": "h264",
+                        "pix_fmt": "yuv420p",
+                        "width": 640,
+                        "height": 360,
+                        "avg_frame_rate": "24/1",
+                        "r_frame_rate": "24/1",
+                        "start_time": "0",
+                        "duration": "1.0",
+                    }
+                ],
+                "format": {
+                    "format_name": MOV_FORMAT_NAME,
+                    "duration": format_duration,
+                },
+            }
+        )
+
+    def fake_run(argv, **kwargs):
+        nonlocal transcoded
+        if Path(argv[0]).name == "ffmpeg":
+            transcoded = True
+            Path(argv[-1]).write_bytes(b"proxy")
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        probed = Path(argv[-1])
+        if probed == destination and not transcoded:
+            return subprocess.CompletedProcess(argv, 1, "", "invalid old file")
+        response = payload("360.0" if probed == source else "1.0")
+        return subprocess.CompletedProcess(argv, 0, response, "private stderr")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(MediaError) as error:
+        create_proxy(source, destination)
+
+    assert_media_error(error, "ffmpeg_failed")
+    assert destination.read_bytes() == b"existing"
 
 
 def test_create_proxy_concurrent_writers_publish_valid_file(
@@ -786,6 +962,18 @@ def test_create_proxy_first_writer_wins_for_different_sources(
         for report in reports
     )
     assert (tmp_path / ".shared.mp4.lock").is_file()
+
+
+def test_create_proxy_validates_missing_source_before_existing_destination(
+    media_fixtures: Path, tmp_path: Path
+) -> None:
+    destination = tmp_path / "existing.mp4"
+    create_proxy(media_fixtures / "no-audio.mp4", destination)
+
+    with pytest.raises(MediaError) as error:
+        create_proxy(tmp_path / "missing.mp4", destination)
+
+    assert_media_error(error, "media_corrupt")
 
 
 def test_create_proxy_does_not_modify_source(
