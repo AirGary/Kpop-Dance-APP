@@ -1,5 +1,7 @@
+import asyncio
 import errno
 import os
+from threading import Event
 from pathlib import Path
 from uuid import UUID
 
@@ -87,6 +89,117 @@ async def test_workspace_copies_when_filesystem_does_not_support_any_hard_links(
 
 
 @pytest.mark.asyncio
+async def test_workspace_instances_serialize_fallback_before_destination_is_visible(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "objects"
+    source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"original video bytes")
+    first = LocalAnalysisWorkspace(root)
+    second = LocalAnalysisWorkspace(root)
+    destination = root / "owner-a" / str(JOB_ID) / "source.mp4"
+    staging_started = Event()
+    release_staging = Event()
+    partial_destination = Event()
+    release_destination = Event()
+    copy_calls = 0
+    destination_descriptors: set[int] = set()
+    real_copyfileobj = __import__("shutil").copyfileobj
+    real_open = os.open
+    real_fdopen = os.fdopen
+
+    def unsupported_link(*_args, **_kwargs) -> None:
+        raise OSError(errno.EOPNOTSUPP, "hard links are not supported")
+
+    def staged_copy(input_handle, output_handle, *args, **kwargs) -> None:
+        nonlocal copy_calls
+        copy_calls += 1
+        if copy_calls != 1:
+            return real_copyfileobj(input_handle, output_handle, *args, **kwargs)
+        content = input_handle.read()
+        output_handle.write(content[:1])
+        output_handle.flush()
+        staging_started.set()
+        assert release_staging.wait(timeout=5)
+        output_handle.write(content[1:])
+
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = real_open(path, flags, mode)
+        if Path(path) == destination:
+            destination_descriptors.add(descriptor)
+        return descriptor
+
+    class PartialDestinationWriter:
+        def __init__(self, handle) -> None:
+            self._handle = handle
+            self._partial_written = False
+
+        def write(self, content: bytes) -> int:
+            if self._partial_written:
+                return self._handle.write(content)
+            self._partial_written = True
+            count = self._handle.write(content[:1])
+            self._handle.flush()
+            partial_destination.set()
+            assert release_destination.wait(timeout=5)
+            return count + self._handle.write(content[1:])
+
+        def __enter__(self):
+            self._handle.__enter__()
+            return self
+
+        def __exit__(self, *args) -> None:
+            self._handle.__exit__(*args)
+
+        def __getattr__(self, name):
+            return getattr(self._handle, name)
+
+    def tracked_fdopen(descriptor: int, *args, **kwargs):
+        handle = real_fdopen(descriptor, *args, **kwargs)
+        if descriptor in destination_descriptors:
+            return PartialDestinationWriter(handle)
+        return handle
+
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.link",
+        unsupported_link,
+    )
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.shutil.copyfileobj",
+        staged_copy,
+    )
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.open",
+        tracked_open,
+    )
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.fdopen",
+        tracked_fdopen,
+    )
+
+    first_task = asyncio.create_task(first.promote_upload("owner-a", JOB_ID, UPLOAD_ID))
+    second_task = None
+    try:
+        assert await asyncio.to_thread(staging_started.wait, 2)
+        second_task = asyncio.create_task(
+            second.promote_upload("owner-a", JOB_ID, UPLOAD_ID)
+        )
+
+        assert not await asyncio.to_thread(partial_destination.wait, 0.2)
+        assert not destination.exists()
+        assert not second_task.done()
+    finally:
+        release_staging.set()
+        release_destination.set()
+        tasks = [first_task]
+        if second_task is not None:
+            tasks.append(second_task)
+        results = await asyncio.gather(*tasks)
+
+    assert results[0] == results[-1] == destination
+    assert destination.read_bytes() == source.read_bytes()
+
+
+@pytest.mark.asyncio
 async def test_workspace_keeps_existing_destination_when_hard_link_races(tmp_path, monkeypatch) -> None:
     root = tmp_path / "objects"
     source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
@@ -111,23 +224,30 @@ async def test_workspace_keeps_existing_destination_when_hard_link_races(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_workspace_copy_race_preserves_first_publisher_and_cleans_temp(tmp_path, monkeypatch) -> None:
+async def test_workspace_copy_fallback_fsyncs_parent_and_cleans_temp(tmp_path, monkeypatch) -> None:
     root = tmp_path / "objects"
     source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
     source.parent.mkdir(parents=True)
     source.write_bytes(b"upload source")
     workspace = LocalAnalysisWorkspace(root)
     destination = root / "owner-a" / str(JOB_ID) / "source.mp4"
+    parent = destination.parent
     real_open = os.open
+    real_fsync = os.fsync
+    opened: list[tuple[Path, int, int]] = []
+    fsynced: list[int] = []
 
     def unavailable_link(*_args, **_kwargs) -> None:
         raise OSError("cross-device link")
 
-    def competing_open(path: Path, flags: int, mode: int = 0o777) -> int:
-        if Path(path) == destination and flags & os.O_EXCL:
-            destination.write_bytes(b"first publisher")
-            raise FileExistsError
-        return real_open(path, flags, mode)
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = real_open(path, flags, mode)
+        opened.append((Path(path), flags, descriptor))
+        return descriptor
+
+    def tracked_fsync(descriptor: int) -> None:
+        fsynced.append(descriptor)
+        real_fsync(descriptor)
 
     monkeypatch.setattr(
         "api.app.adapters.storage.local_analysis_workspace.os.link",
@@ -135,13 +255,23 @@ async def test_workspace_copy_race_preserves_first_publisher_and_cleans_temp(tmp
     )
     monkeypatch.setattr(
         "api.app.adapters.storage.local_analysis_workspace.os.open",
-        competing_open,
+        tracked_open,
+    )
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.fsync",
+        tracked_fsync,
     )
 
     assert await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID) == destination
-    assert destination.read_bytes() == b"first publisher"
+    assert destination.read_bytes() == b"upload source"
     assert source.read_bytes() == b"upload source"
     assert list(destination.parent.glob(".source.mp4.*.tmp")) == []
+    directory_descriptors = [
+        descriptor
+        for path, flags, descriptor in opened
+        if path == parent and flags & os.O_DIRECTORY
+    ]
+    assert directory_descriptors[0] in fsynced
 
 
 def test_workspace_rejects_owner_path_traversal(tmp_path) -> None:

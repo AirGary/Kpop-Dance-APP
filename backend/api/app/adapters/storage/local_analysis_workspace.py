@@ -1,10 +1,12 @@
 import asyncio
+from contextlib import contextmanager
+import fcntl
 import os
 import re
 import shutil
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
-from threading import Lock
 from uuid import UUID
 
 from api.app.ports.analysis_workspace import UnsafeAnalysisWorkspacePathError
@@ -16,8 +18,6 @@ _SAFE_OWNER_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 class LocalAnalysisWorkspace:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
-        self._promotion_locks: dict[Path, Lock] = {}
-        self._promotion_locks_guard = Lock()
 
     def analysis_directory(self, owner_id: str, job_id: UUID) -> Path:
         return self._job_directory(owner_id, job_id) / "analysis"
@@ -44,18 +44,18 @@ class LocalAnalysisWorkspace:
     def _promote(self, source: Path, destination: Path) -> Path:
         source = source.resolve(strict=True)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            return destination
-        try:
-            os.link(source, destination)
-        except FileExistsError:
-            return destination
-        except OSError:
-            with self._promotion_lock(destination):
+        with self._publication_lock(destination):
+            if destination.exists():
+                return destination
+            try:
+                os.link(source, destination)
+            except FileExistsError:
+                return destination
+            except OSError:
                 if destination.exists():
                     return destination
                 return self._copy_and_publish(source, destination)
-        return destination
+            return destination
 
     @staticmethod
     def _copy_and_publish(source: Path, destination: Path) -> Path:
@@ -65,39 +65,35 @@ class LocalAnalysisWorkspace:
             dir=destination.parent,
         )
         temporary = Path(temporary_name)
-        destination_created = False
         try:
             with source.open("rb") as input_handle, os.fdopen(descriptor, "wb") as output_handle:
                 shutil.copyfileobj(input_handle, output_handle)
                 output_handle.flush()
                 os.fsync(output_handle.fileno())
-            try:
-                destination_descriptor = os.open(
-                    destination,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                    0o600,
-                )
-            except FileExistsError:
-                return destination
-            destination_created = True
-            with temporary.open("rb") as input_handle, os.fdopen(
-                destination_descriptor,
-                "wb",
-            ) as output_handle:
-                shutil.copyfileobj(input_handle, output_handle)
-                output_handle.flush()
-                os.fsync(output_handle.fileno())
+            os.replace(temporary, destination)
+            LocalAnalysisWorkspace._fsync_directory(destination.parent)
             return destination
-        except Exception:
-            if destination_created:
-                destination.unlink(missing_ok=True)
-            raise
         finally:
             temporary.unlink(missing_ok=True)
 
-    def _promotion_lock(self, destination: Path) -> Lock:
-        with self._promotion_locks_guard:
-            return self._promotion_locks.setdefault(destination, Lock())
+    @staticmethod
+    @contextmanager
+    def _publication_lock(destination: Path) -> Iterator[None]:
+        lock_path = destination.parent / f".{destination.name}.lock"
+        with lock_path.open("a+b") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    @staticmethod
+    def _fsync_directory(directory: Path) -> None:
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
     def _upload_path(self, owner_id: str, upload_id: UUID) -> Path:
         if not _SAFE_OWNER_ID.fullmatch(owner_id):
