@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 from uuid import UUID
 
@@ -107,12 +108,30 @@ class FileAnalysisRepository:
     @staticmethod
     def _write_json(path: Path, value: object) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f"{path.name}.tmp")
-        with temporary.open("w", encoding="utf-8") as handle:
-            json.dump(value, handle, separators=(",", ":"), sort_keys=True)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(value, handle, separators=(",", ":"), sort_keys=True)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            FileAnalysisRepository._fsync_directory(path.parent)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    def _fsync_directory(directory: Path) -> None:
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
     def _state_path(self, owner_id: str, job_id: UUID) -> Path:
         return self._analysis_directory(owner_id, job_id) / "analysis-state.json"

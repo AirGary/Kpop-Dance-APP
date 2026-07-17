@@ -1,5 +1,9 @@
+import asyncio
+import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID
 
 import pytest
@@ -67,13 +71,96 @@ async def test_file_repository_persists_state_with_atomic_replace(tmp_path, monk
     stored = await repository.update("owner-a", JOB_ID, analysis_response())
 
     assert stored.state is AnalysisJobState.UPLOADED
-    assert replaces == [
-        (
-            tmp_path / "owner-a" / str(JOB_ID) / "analysis" / "analysis-state.json.tmp",
-            tmp_path / "owner-a" / str(JOB_ID) / "analysis" / "analysis-state.json",
-        )
-    ]
+    assert len(replaces) == 1
+    temporary, destination = replaces[0]
+    assert temporary.parent == tmp_path / "owner-a" / str(JOB_ID) / "analysis"
+    assert temporary.name.startswith(".analysis-state.json.")
+    assert temporary.name.endswith(".tmp")
+    assert destination == tmp_path / "owner-a" / str(JOB_ID) / "analysis" / "analysis-state.json"
     assert not replaces[0][0].exists()
+
+
+@pytest.mark.asyncio
+async def test_file_repository_uses_unique_temps_for_concurrent_writes_and_keeps_valid_json(tmp_path, monkeypatch) -> None:
+    repository = FileAnalysisRepository(tmp_path)
+    replaces: list[Path] = []
+    barrier = Barrier(2)
+    real_replace = os.replace
+
+    def synchronized_replace(source: Path, destination: Path) -> None:
+        replaces.append(source)
+        barrier.wait(timeout=5)
+        real_replace(source, destination)
+
+    monkeypatch.setattr(
+        "api.app.adapters.repositories.file_analysis_repository.os.replace",
+        synchronized_replace,
+    )
+
+    await asyncio.gather(
+        repository.update("owner-a", JOB_ID, analysis_response(AnalysisJobState.UPLOADED)),
+        repository.update("owner-a", JOB_ID, analysis_response(AnalysisJobState.DETECTING)),
+    )
+
+    assert len(set(replaces)) == 2
+    payload = json.loads(
+        (tmp_path / "owner-a" / str(JOB_ID) / "analysis" / "analysis-state.json").read_text()
+    )
+    assert payload["state"] in {"uploaded", "detecting"}
+
+
+@pytest.mark.asyncio
+async def test_file_repository_fsyncs_parent_directory_after_replace(tmp_path, monkeypatch) -> None:
+    repository = FileAnalysisRepository(tmp_path)
+    opened: list[tuple[Path, int, int]] = []
+    fsynced: list[int] = []
+    real_open = os.open
+    real_fsync = os.fsync
+
+    def record_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = real_open(path, flags, mode)
+        opened.append((Path(path), flags, descriptor))
+        return descriptor
+
+    def record_fsync(descriptor: int) -> None:
+        fsynced.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(
+        "api.app.adapters.repositories.file_analysis_repository.os.open",
+        record_open,
+    )
+    monkeypatch.setattr(
+        "api.app.adapters.repositories.file_analysis_repository.os.fsync",
+        record_fsync,
+    )
+
+    await repository.update("owner-a", JOB_ID, analysis_response())
+
+    parent = tmp_path / "owner-a" / str(JOB_ID) / "analysis"
+    directory_descriptors = [
+        descriptor
+        for path, flags, descriptor in opened
+        if path == parent and flags & os.O_DIRECTORY
+    ]
+    assert directory_descriptors
+    assert directory_descriptors[0] in fsynced
+
+
+@pytest.mark.asyncio
+async def test_file_repository_removes_unique_temp_when_replace_fails(tmp_path, monkeypatch) -> None:
+    repository = FileAnalysisRepository(tmp_path)
+
+    monkeypatch.setattr(
+        "api.app.adapters.repositories.file_analysis_repository.os.replace",
+        lambda _source, _destination: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+
+    with pytest.raises(OSError, match="replace failed"):
+        await repository.update("owner-a", JOB_ID, analysis_response())
+
+    directory = tmp_path / "owner-a" / str(JOB_ID) / "analysis"
+    assert list(directory.glob(".analysis-state.json.*.tmp")) == []
 
 
 @pytest.mark.asyncio

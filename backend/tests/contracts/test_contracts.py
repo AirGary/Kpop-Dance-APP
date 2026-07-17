@@ -115,6 +115,52 @@ def test_dancer_candidate_rejects_invalid_boundaries(payload):
         DancerCandidateResponse.model_validate(payload)
 
 
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("field", ["startSeconds", "endSeconds"])
+def test_dancer_candidate_rejects_non_finite_intervals(field, value):
+    payload = {
+        "candidateId": "candidate-1",
+        "representativeImagePaths": ["one", "two", "three"],
+        "appearanceIntervals": [{"startSeconds": 1, "endSeconds": 2}],
+        "boxSummary": {"x": 0, "y": 0, "width": 1, "height": 1},
+        "confidence": 0.5,
+    }
+    payload["appearanceIntervals"][0][field] = value
+
+    with pytest.raises(ValidationError):
+        DancerCandidateResponse.model_validate(payload)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("field", ["x", "y", "width", "height"])
+def test_dancer_candidate_rejects_non_finite_normalized_coordinates(field, value):
+    payload = {
+        "candidateId": "candidate-1",
+        "representativeImagePaths": ["one", "two", "three"],
+        "appearanceIntervals": [{"startSeconds": 1, "endSeconds": 2}],
+        "boxSummary": {"x": 0, "y": 0, "width": 1, "height": 1},
+        "confidence": 0.5,
+    }
+    payload["boxSummary"][field] = value
+
+    with pytest.raises(ValidationError):
+        DancerCandidateResponse.model_validate(payload)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_dancer_candidate_rejects_non_finite_confidence(value):
+    payload = {
+        "candidateId": "candidate-1",
+        "representativeImagePaths": ["one", "two", "three"],
+        "appearanceIntervals": [{"startSeconds": 1, "endSeconds": 2}],
+        "boxSummary": {"x": 0, "y": 0, "width": 1, "height": 1},
+        "confidence": value,
+    }
+
+    with pytest.raises(ValidationError):
+        DancerCandidateResponse.model_validate(payload)
+
+
 @pytest.mark.parametrize(
     "payload",
     [

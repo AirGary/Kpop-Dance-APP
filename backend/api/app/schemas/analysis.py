@@ -27,8 +27,8 @@ class AnalysisJobState(str, Enum):
 class AppearanceInterval(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
-    start_seconds: float = Field(alias="startSeconds", ge=0)
-    end_seconds: float = Field(alias="endSeconds", gt=0)
+    start_seconds: float = Field(alias="startSeconds", ge=0, allow_inf_nan=False)
+    end_seconds: float = Field(alias="endSeconds", gt=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def end_must_follow_start(self) -> "AppearanceInterval":
@@ -40,10 +40,10 @@ class AppearanceInterval(BaseModel):
 class NormalizedBoxSummary(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 
-    x: float = Field(ge=0, le=1)
-    y: float = Field(ge=0, le=1)
-    width: float = Field(gt=0, le=1)
-    height: float = Field(gt=0, le=1)
+    x: float = Field(ge=0, le=1, allow_inf_nan=False)
+    y: float = Field(ge=0, le=1, allow_inf_nan=False)
+    width: float = Field(gt=0, le=1, allow_inf_nan=False)
+    height: float = Field(gt=0, le=1, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def box_must_remain_normalized(self) -> "NormalizedBoxSummary":
@@ -64,7 +64,7 @@ class DancerCandidateResponse(BaseModel):
         min_length=1,
     )
     box_summary: NormalizedBoxSummary = Field(alias="boxSummary")
-    confidence: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1, allow_inf_nan=False)
 
     @field_validator("representative_image_paths")
     @classmethod

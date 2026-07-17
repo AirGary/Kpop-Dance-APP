@@ -20,5 +20,5 @@ class AnalysisWorkspace(Protocol):
         self,
         owner_id: str,
         job_id: UUID,
-        source: Path,
+        upload_id: UUID,
     ) -> Path: ...

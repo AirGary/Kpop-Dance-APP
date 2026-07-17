@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -9,19 +11,21 @@ from api.app.adapters.storage.local_analysis_workspace import (
 
 
 JOB_ID = UUID("377a305d-9e09-45ba-ad1b-bbe7c6489f3f")
+UPLOAD_ID = UUID("d987817a-ca47-4f19-9c17-2b8717f518a8")
 
 
 @pytest.mark.asyncio
 async def test_workspace_promotes_upload_by_hard_link_without_changing_source(tmp_path) -> None:
-    source = tmp_path / "uploads" / "source.mp4"
-    source.parent.mkdir()
+    root = tmp_path / "objects"
+    source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
+    source.parent.mkdir(parents=True)
     source.write_bytes(b"original video bytes")
     before = source.read_bytes()
-    workspace = LocalAnalysisWorkspace(tmp_path / "objects")
+    workspace = LocalAnalysisWorkspace(root)
 
-    destination = await workspace.promote_upload("owner-a", JOB_ID, source)
+    destination = await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID)
 
-    assert destination == tmp_path / "objects" / "owner-a" / str(JOB_ID) / "source.mp4"
+    assert destination == root / "owner-a" / str(JOB_ID) / "source.mp4"
     assert destination.read_bytes() == before
     assert source.read_bytes() == before
     assert destination.stat().st_ino == source.stat().st_ino
@@ -29,22 +33,86 @@ async def test_workspace_promotes_upload_by_hard_link_without_changing_source(tm
 
 @pytest.mark.asyncio
 async def test_workspace_copies_when_hard_link_is_unavailable(tmp_path, monkeypatch) -> None:
-    source = tmp_path / "uploads" / "source.mp4"
-    source.parent.mkdir()
+    root = tmp_path / "objects"
+    source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
+    source.parent.mkdir(parents=True)
     source.write_bytes(b"original video bytes")
-    workspace = LocalAnalysisWorkspace(tmp_path / "objects")
+    workspace = LocalAnalysisWorkspace(root)
+    fsync_calls: list[int] = []
+    real_fsync = os.fsync
+    real_link = os.link
 
-    def unavailable_link(*_args, **_kwargs) -> None:
-        raise OSError("cross-device link")
+    def unavailable_link(link_source: Path, target: Path) -> None:
+        if Path(link_source) == source:
+            raise OSError("cross-device link")
+        real_link(link_source, target)
 
     monkeypatch.setattr(
         "api.app.adapters.storage.local_analysis_workspace.os.link",
         unavailable_link,
     )
-    destination = await workspace.promote_upload("owner-a", JOB_ID, source)
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.fsync",
+        lambda descriptor: (fsync_calls.append(descriptor), real_fsync(descriptor))[1],
+    )
+    destination = await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID)
 
     assert destination.read_bytes() == source.read_bytes() == b"original video bytes"
     assert destination.stat().st_ino != source.stat().st_ino
+    assert fsync_calls
+
+
+@pytest.mark.asyncio
+async def test_workspace_keeps_existing_destination_when_hard_link_races(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "objects"
+    source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"upload source")
+    workspace = LocalAnalysisWorkspace(root)
+    destination = root / "owner-a" / str(JOB_ID) / "source.mp4"
+
+    def competing_link(_source: Path, target: Path) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"first publisher")
+        raise FileExistsError
+
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.link",
+        competing_link,
+    )
+
+    assert await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID) == destination
+    assert destination.read_bytes() == b"first publisher"
+    assert source.read_bytes() == b"upload source"
+
+
+@pytest.mark.asyncio
+async def test_workspace_copy_race_preserves_first_publisher_and_cleans_temp(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "objects"
+    source = root / "owner-a" / "uploads" / str(UPLOAD_ID) / "source.mp4"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"upload source")
+    workspace = LocalAnalysisWorkspace(root)
+    destination = root / "owner-a" / str(JOB_ID) / "source.mp4"
+    link_calls = 0
+
+    def competing_link(_source: Path, target: Path) -> None:
+        nonlocal link_calls
+        link_calls += 1
+        if link_calls == 1:
+            raise OSError("cross-device link")
+        target.write_bytes(b"first publisher")
+        raise FileExistsError
+
+    monkeypatch.setattr(
+        "api.app.adapters.storage.local_analysis_workspace.os.link",
+        competing_link,
+    )
+
+    assert await workspace.promote_upload("owner-a", JOB_ID, UPLOAD_ID) == destination
+    assert destination.read_bytes() == b"first publisher"
+    assert source.read_bytes() == b"upload source"
+    assert list(destination.parent.glob(".source.mp4.*.tmp")) == []
 
 
 def test_workspace_rejects_owner_path_traversal(tmp_path) -> None:
