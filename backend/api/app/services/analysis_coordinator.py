@@ -29,6 +29,12 @@ class AnalysisCoordinator:
 
     async def on_upload_completed(self, owner_id: str, job_id: UUID, upload_id: UUID) -> None:
         current = await self._jobs.get_job(owner_id, job_id)
+        if current.state not in {
+            AnalysisJobState.DRAFT,
+            AnalysisJobState.UPLOADED,
+            AnalysisJobState.FAILED_RECOVERABLE,
+        }:
+            return
         await self._repository.update(owner_id, job_id, current)
         try:
             await self._workspace.promote_upload(owner_id, job_id, upload_id)
@@ -36,29 +42,37 @@ class AnalysisCoordinator:
         except Exception:
             await self._set_state(owner_id, job_id, AnalysisJobState.FAILED_RECOVERABLE, 0, "media_preflight_failed")
             return
-        async with self._lock:
-            task = self._tasks.get(job_id)
-            if task is None or task.done():
-                self._tasks[job_id] = asyncio.create_task(self._detect(owner_id, job_id))
+        await self._schedule_detection(owner_id, job_id)
 
     async def candidates(self, owner_id: str, job_id: UUID) -> list[DancerCandidateResponse]:
         await self._require_owner(owner_id, job_id)
         return await self._repository.candidates(owner_id, job_id)
 
-    async def select_target(self, owner_id: str, job_id: UUID, candidate_id: str) -> JobResponse:
+    async def select_target(
+        self,
+        owner_id: str,
+        job_id: UUID,
+        candidate_id: str,
+        idempotency_key: str,
+    ) -> JobResponse:
         await self._require_owner(owner_id, job_id)
         candidates = await self._repository.candidates(owner_id, job_id)
         if not any(candidate.candidate_id == candidate_id for candidate in candidates):
             raise APIError(422, "invalid_candidate", "Candidate was not found.")
+        previous = await self._repository.target_selection(owner_id, job_id)
+        if previous is not None:
+            previous_candidate, previous_key = previous
+            if previous_key == idempotency_key and previous_candidate == candidate_id:
+                return await self._jobs.get_job(owner_id, job_id)
+            if previous_key == idempotency_key:
+                raise APIError(409, "idempotency_conflict", "Idempotency key was already used for a different candidate.")
         current = await self._jobs.get_job(owner_id, job_id)
         if current.state not in {AnalysisJobState.AWAITING_TARGET, AnalysisJobState.QUEUED, AnalysisJobState.ANALYZING, AnalysisJobState.RESULT_READY}:
             raise APIError(409, "invalid_analysis_state", "Analysis is not ready for target selection.")
         if current.state is AnalysisJobState.AWAITING_TARGET:
+            await self._repository.set_target_selection(owner_id, job_id, candidate_id, idempotency_key)
             await self._set_state(owner_id, job_id, AnalysisJobState.QUEUED, 0.55)
-            async with self._lock:
-                task = self._tasks.get(job_id)
-                if task is None or task.done():
-                    self._tasks[job_id] = asyncio.create_task(self._analyze(owner_id, job_id, candidate_id))
+            await self._schedule_analysis(owner_id, job_id, candidate_id)
         return await self._jobs.get_job(owner_id, job_id)
 
     async def result(self, owner_id: str, job_id: UUID):
@@ -77,7 +91,13 @@ class AnalysisCoordinator:
         return path
 
     async def resume_pending(self) -> None:
-        return None
+        for owner_id, response in await self._repository.list_states():
+            if response.state is AnalysisJobState.DETECTING:
+                await self._schedule_detection(owner_id, response.id)
+            elif response.state in {AnalysisJobState.QUEUED, AnalysisJobState.ANALYZING}:
+                selection = await self._repository.target_selection(owner_id, response.id)
+                if selection is not None:
+                    await self._schedule_analysis(owner_id, response.id, selection[0])
 
     async def shutdown(self) -> None:
         async with self._lock:
@@ -99,6 +119,18 @@ class AnalysisCoordinator:
         except Exception:
             await self._set_state(owner_id, job_id, AnalysisJobState.FAILED_RECOVERABLE, 0, "analysis_runner_failed")
 
+    async def _schedule_detection(self, owner_id: str, job_id: UUID) -> None:
+        async with self._lock:
+            task = self._tasks.get(job_id)
+            if task is None or task.done():
+                self._tasks[job_id] = asyncio.create_task(self._detect(owner_id, job_id))
+
+    async def _schedule_analysis(self, owner_id: str, job_id: UUID, candidate_id: str) -> None:
+        async with self._lock:
+            task = self._tasks.get(job_id)
+            if task is None or task.done():
+                self._tasks[job_id] = asyncio.create_task(self._analyze(owner_id, job_id, candidate_id))
+
     async def _analyze(self, owner_id: str, job_id: UUID, candidate_id: str) -> None:
         try:
             await self._set_state(owner_id, job_id, AnalysisJobState.ANALYZING, 0.6)
@@ -119,4 +151,6 @@ class AnalysisCoordinator:
     async def _set_state(self, owner_id: str, job_id: UUID, state: AnalysisJobState, progress: float, error_code: str | None = None) -> JobResponse:
         current = await self._jobs.get_job(owner_id, job_id)
         updated = current.model_copy(update={"state": state, "progress": progress, "error_code": error_code, "updated_at": datetime.now(UTC)})
-        return await self._jobs.update_response(current.state, updated)
+        stored = await self._jobs.update_response(current.state, updated)
+        await self._repository.update(owner_id, job_id, stored)
+        return stored

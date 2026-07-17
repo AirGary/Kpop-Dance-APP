@@ -275,31 +275,33 @@ git commit -m "feat: detect real dancer candidates"
 - Produces: `AnalysisCoordinator.on_upload_completed`, `resume_pending`, `select_target`, and `shutdown`.
 - Consumes: persistent repository/workspace, local runner, and completed upload callback.
 
-- [ ] **Step 1: Write failing coordinator state-machine tests**
+- [x] **Step 1: Write failing coordinator state-machine tests**
 
 Test `uploaded -> detecting -> awaitingTarget`, `awaitingTarget -> queued -> analyzing -> resultReady`, idempotent target selection, foreign-owner `404`, invalid candidate `422`, runner failure to `failedRecoverable`, unsupported input to `failedTerminal`, and restart resume from each checkpoint. Assert that duplicate completion or selection never starts two worker processes.
 
-- [ ] **Step 2: Write failing API and OpenAPI contract tests**
+- [x] **Step 2: Write failing API and OpenAPI contract tests**
 
 Require the four endpoints above, stable error envelopes, authorization on result bytes, no absolute paths in JSON, and `409` for an idempotency key reused with a different candidate.
 
-- [ ] **Step 3: Implement a subprocess runner with bounded output**
+- [x] **Step 3: Implement a subprocess runner with bounded output**
 
 Launch `.local-ai/venv/bin/python -m stage_lab_analysis.worker` with workspace-relative arguments, capture only structured status JSON, cap stderr retained for diagnostics, support cancellation, and never log source names or paths. The runner must not run inside Cloud Run containers.
 
-- [ ] **Step 4: Wire local AI mode without weakening cloud auth**
+- [x] **Step 4: Wire local AI mode without weakening cloud auth**
 
 Add `APP_ENVIRONMENT=local-ai`. It uses development bearer verification, local resumable uploads, persistent analysis state, and the local runner. Existing `development`, `cloud-bootstrap`, and `cloud` behavior must remain unchanged. Upload completion promotes the source and schedules candidate detection only in `local-ai` mode.
 
-- [ ] **Step 5: Add lifecycle resume and shutdown**
+- [x] **Step 5: Add lifecycle resume and shutdown**
 
 FastAPI lifespan calls `resume_pending()` after upload cleanup and awaits `shutdown()` on exit. Running tasks receive cancellation; completed checkpoints stay on disk for the next launch.
 
-- [ ] **Step 6: Run API, backend, and privacy tests**
+- [x] **Step 6: Run API, backend, and privacy tests**
 
 Run focused tests, `./scripts/verify-backend.sh`, and assert request logs contain no bearer token, pairing token, source path, video title, candidate image, or result download bytes.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
+
+Task 5 的真实候选联调已通过；目标姿态与结果生成仍明确属于 Task 7。
 
 ```bash
 git add backend/api backend/tests backend/README.md

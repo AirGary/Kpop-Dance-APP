@@ -12,6 +12,7 @@ from api.app.adapters.repositories.firestore_job_repository import (
 from api.app.adapters.repositories.firestore_upload_repository import (
     FirestoreUploadRepository,
 )
+from api.app.adapters.repositories.file_job_repository import FileJobRepository
 from api.app.adapters.repositories.in_memory_job_repository import (
     InMemoryJobRepository,
 )
@@ -116,7 +117,7 @@ class AppContainer:
     @classmethod
     def local_ai(cls, settings: Settings) -> "AppContainer":
         auth = DevelopmentAuthVerifier()
-        job_repository = InMemoryJobRepository()
+        job_repository = FileJobRepository(settings.object_storage_root)
         object_store = LocalObjectStore(settings.object_storage_root)
         job_service = JobService(job_repository, object_store)
         workspace = LocalAnalysisWorkspace(settings.object_storage_root)

@@ -24,6 +24,9 @@ class FileAnalysisRepository:
     async def load(self, owner_id: str, job_id: UUID) -> JobResponse:
         return await asyncio.to_thread(self._read_state, owner_id, job_id)
 
+    async def list_states(self) -> list[tuple[str, JobResponse]]:
+        return await asyncio.to_thread(self._list_states)
+
     async def update(
         self,
         owner_id: str,
@@ -59,6 +62,27 @@ class FileAnalysisRepository:
             [candidate.model_dump(mode="json", by_alias=True) for candidate in candidates],
         )
 
+    async def set_target_selection(
+        self,
+        owner_id: str,
+        job_id: UUID,
+        candidate_id: str,
+        idempotency_key: str,
+    ) -> None:
+        await asyncio.to_thread(self._require_state, owner_id, job_id)
+        await asyncio.to_thread(
+            self._write_json,
+            self._analysis_directory(owner_id, job_id) / "target-selection.json",
+            {"candidateId": candidate_id, "idempotencyKey": idempotency_key},
+        )
+
+    async def target_selection(
+        self,
+        owner_id: str,
+        job_id: UUID,
+    ) -> tuple[str, str] | None:
+        return await asyncio.to_thread(self._read_target_selection, owner_id, job_id)
+
     async def result(self, owner_id: str, job_id: UUID) -> AnalysisResultResponse:
         return await asyncio.to_thread(self._read_result, owner_id, job_id)
 
@@ -78,6 +102,18 @@ class FileAnalysisRepository:
     def _read_state(self, owner_id: str, job_id: UUID) -> JobResponse:
         return JobResponse.model_validate(self._read_json(self._state_path(owner_id, job_id)))
 
+    def _list_states(self) -> list[tuple[str, JobResponse]]:
+        states: list[tuple[str, JobResponse]] = []
+        if not self._root.exists():
+            return states
+        for path in self._root.glob("*/*/analysis/analysis-state.json"):
+            owner_id = path.parents[2].name
+            try:
+                states.append((owner_id, JobResponse.model_validate(json.loads(path.read_text(encoding="utf-8")))))
+            except (OSError, ValueError, TypeError):
+                continue
+        return states
+
     def _read_candidates(
         self,
         owner_id: str,
@@ -89,6 +125,13 @@ class FileAnalysisRepository:
             return [DancerCandidateResponse.model_validate(item) for item in self._read_json(path)]
         except AnalysisNotFoundError:
             return []
+
+    def _read_target_selection(self, owner_id: str, job_id: UUID) -> tuple[str, str] | None:
+        try:
+            value = self._read_json(self._analysis_directory(owner_id, job_id) / "target-selection.json")
+        except AnalysisNotFoundError:
+            return None
+        return str(value["candidateId"]), str(value["idempotencyKey"])
 
     def _read_result(self, owner_id: str, job_id: UUID) -> AnalysisResultResponse:
         self._require_state(owner_id, job_id)

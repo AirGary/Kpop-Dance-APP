@@ -14,7 +14,8 @@ class LocalAnalysisRunner(AnalysisRunner):
         self._workspace_root = workspace_root.resolve()
         self._worker_root = worker_root.resolve()
         self._model_root = model_root.resolve()
-        self._python_path = python_path.resolve()
+        # Keep the virtualenv launcher symlink so sys.prefix remains the local AI environment.
+        self._python_path = python_path.absolute()
         self._processes: set[asyncio.subprocess.Process] = set()
 
     async def detect_candidates(self, owner_id: str, job_id: UUID) -> list[DancerCandidateResponse]:
