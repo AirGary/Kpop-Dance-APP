@@ -4,6 +4,7 @@ from pathlib import Path
 from api.app.adapters.auth.development_auth import DevelopmentAuthVerifier
 from api.app.adapters.auth.firebase_auth import FirebaseAuthVerifier
 from api.app.adapters.auth.unavailable_auth import UnavailableAuthVerifier
+from api.app.adapters.analysis.local_analysis_runner import LocalAnalysisRunner
 from api.app.adapters.repositories.firestore_gateway import GoogleFirestoreGateway
 from api.app.adapters.repositories.firestore_job_repository import (
     FirestoreJobRepository,
@@ -26,6 +27,9 @@ from api.app.ports.auth import AuthVerifier
 from api.app.config import Settings
 from api.app.services.job_service import JobService
 from api.app.services.upload_service import UploadService
+from api.app.adapters.repositories.file_analysis_repository import FileAnalysisRepository
+from api.app.adapters.storage.local_analysis_workspace import LocalAnalysisWorkspace
+from api.app.services.analysis_coordinator import AnalysisCoordinator
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +37,7 @@ class AppContainer:
     auth_verifier: AuthVerifier
     job_service: JobService
     upload_service: UploadService
+    analysis_coordinator: AnalysisCoordinator | None = None
 
     @classmethod
     def development(cls, object_storage_root: Path) -> "AppContainer":
@@ -81,6 +86,8 @@ class AppContainer:
     def for_settings(cls, settings: Settings) -> "AppContainer":
         if settings.environment == "development":
             return cls.development(settings.object_storage_root)
+        if settings.environment == "local-ai":
+            return cls.local_ai(settings)
         if settings.environment == "cloud-bootstrap":
             return cls.cloud_bootstrap(settings.object_storage_root)
         if settings.environment == "cloud":
@@ -105,6 +112,31 @@ class AppContainer:
                 job_service,
             ),
         )
+
+    @classmethod
+    def local_ai(cls, settings: Settings) -> "AppContainer":
+        auth = DevelopmentAuthVerifier()
+        job_repository = InMemoryJobRepository()
+        object_store = LocalObjectStore(settings.object_storage_root)
+        job_service = JobService(job_repository, object_store)
+        workspace = LocalAnalysisWorkspace(settings.object_storage_root)
+        analysis_repository = FileAnalysisRepository(settings.object_storage_root)
+        model_root = settings.local_ai_model_root or (Path(__file__).resolve().parents[3] / ".local-ai" / "models")
+        repository_root = Path(__file__).resolve().parents[3]
+        runner = LocalAnalysisRunner(
+            settings.object_storage_root,
+            repository_root / "backend" / "workers" / "analysis",
+            model_root,
+            repository_root / ".local-ai" / "venv" / "bin" / "python",
+        )
+        coordinator = AnalysisCoordinator(job_service, analysis_repository, workspace, runner)
+        upload_service = UploadService(
+            InMemoryUploadRepository(),
+            LocalUploadObjectStore(settings.object_storage_root),
+            job_service,
+            on_completed=coordinator.on_upload_completed,
+        )
+        return cls(auth, job_service, upload_service, coordinator)
 
 
 def _required_setting(name: str, value: str | None) -> str:

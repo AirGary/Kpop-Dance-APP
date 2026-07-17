@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1-4 与 Task 6 代码已实现，Task 6 已由 PR #15 合并，当前等待 Task 5 API 实现、Task 4 真实检测门禁和本地 API 联调。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1-4、Task 5 API 编排骨架与 Task 6 代码已实现，Task 6 已由 PR #15 合并，当前等待 Task 5 真实模型联调、Task 4 真实检测门禁和 Task 5 重启恢复。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -56,21 +56,26 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ### 当前进行中的任务
 
-#### Task：Stage 6 Task 4 真实候选舞者（代码已实现，待真实样本门禁）
+#### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 
 - [x] 纯逻辑测试覆盖短时遮挡、时间单调性、归一化框、单帧唯一分配、候选排序和短轨迹过滤。
 - [x] 检测器接口隔离 RTMDet-m，输出只包含人物框和置信度；MPS 兼容性错误仅允许一次 CPU 回退。
 - [x] Worker 消费 Task 3 代理，按轨迹生成候选摘要，并为可读图像帧写入三张去元数据 JPEG 代表图。
-- [ ] 使用 `.local-ai` Python 3.11 环境和用户指定的 `82MAJOR Trophy` 视频运行真实检测门禁。
-- [ ] 完成 Worker 全量回归、模型设备/耗时/候选数量记录，并提交 GitHub PR。
+- [x] 使用 `.local-ai` Python 3.11 环境和用户指定的 `82MAJOR Trophy` 视频运行真实检测门禁：6 个候选、6 组代表图完整、分析代理生成成功；结果仅保存在 `/tmp`。
+- [x] 完成 Worker 全量回归、模型设备/耗时/候选数量记录，并将采样策略和结构化 runner 输出提交到 Task 5 PR。
 
-当前验证：Task 4 聚焦测试 6 项通过；Task 3 媒体测试与 Task 4 聚焦测试合计 51 项通过。完整 Worker 测试在旧 `backend/.venv` 下为 76 项通过、1 项失败，失败是运行环境缺少 NumPy；应使用 Task 1 的 `.local-ai/venv/bin/python` 重跑，不把该环境失败计为模型或业务失败。
+当前验证：Task 4 聚焦测试 6 项通过；`./scripts/verify-local-ai.sh` 为 77 项通过，RTMDet-m/RTMPose-m CPU 探针通过；真实视频预检检测耗时约 4 分钟，使用每 6 帧采样，候选数 6，代表图完整率 6/6。
 
-#### Task：Stage 6 Task 5 FastAPI 两阶段分析编排（未实现，当前硬阻塞）
+#### Task：Stage 6 Task 5 FastAPI 两阶段分析编排（API 骨架已实现，待真实模型联调）
 
-- [ ] GitHub `main` 中没有 Task 5 的 coordinator、runner 或 analysis routes 实现，也没有对应远端分支/PR。
-- [ ] 因此本地 FastAPI 尚不能完成“上传完成 -> 候选列表 -> 选择舞者”的真实联调。
-- [ ] 必须先实现并验证 Task 5，不能直接开始 Task 7。
+- [x] `local-ai` 环境接入本地工作区、上传完成回调、候选/目标/结果四个接口和受保护结果内容路径。
+- [x] 本地 runner 使用独立 `.local-ai/venv/bin/python` subprocess；worker 异常进入 `failedRecoverable`，不把上传请求误报为 500。
+- [x] API 与状态机测试、OpenAPI 合约和标准后端回归通过。
+- [ ] 使用真实 `.local-ai` 环境和 `82MAJOR Trophy` 视频返回非空候选列表。
+- [ ] 实现 `resume_pending()` 的重启恢复和 Task 7 目标分析结果。
+- [ ] 必须先完成 Task 5 的真实 API 候选联调和重启恢复，不能直接开始 Task 7。
+
+当前验证：`./scripts/verify-backend.sh` 为 198 项通过；本地 FastAPI smoke 已完成上传完成到候选查询，缺失模型时进入 `failedRecoverable` 并返回空候选；真实 worker 已在独立命令中返回 6 个候选，但尚未通过 iOS -> FastAPI -> worker 的完整真实链路。
 
 #### Task：Stage 6 Task 6 iOS 真实分析接入（代码已实现，待 Xcode 运行验收）
 
@@ -282,7 +287,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 下一阶段建议
 
-Stage 6 Task 3 已由 PR #12 合并并经用户验收。下一建议是 Task 4 RTMDet-m 与 ByteTrack 候选舞者分析；开始前必须单独确认范围、成本、测试和回退方式，Task 4 当前尚未启动。
+Stage 6 Task 4 的真实样本门禁已通过。当前建议先合并恢复 Task 5 的本地 FastAPI 编排，再完成“上传完成 -> 候选列表 -> 选择舞者”的真实 API 联调与重启恢复；通过后才进入 Task 7 目标姿态、动作分段和结果包。
 
 ## 阶段验收记录
 
@@ -298,6 +303,8 @@ Stage 6 Task 3 已由 PR #12 合并并经用户验收。下一建议是 Task 4 R
 - 2026-07-17：GitHub PR #11 合并提交 `72da1c4` 已核实；用户确认开始 Task 3，状态更新为“进行中”，尚无 Task 3 产品代码、用户视频读取或部署变更。
 - 2026-07-17：Task 3 媒体预检与原子分析代理已实现；媒体 `45` 项、Worker `71` 项和后端 `197` 项测试通过，最终审查无 P0/P1/P2，状态更新为“待验收”，尚未开始 Task 4。
 - 2026-07-17：用户回复“已合并并验收 Task 3”；GitHub PR #12 合并提交 `c631210` 已核实，Task 3 正式标记为“已完成”，Task 4 尚未开始。
+- 2026-07-17：GitHub PR #14 合并 Task 4 代码；真实 `82MAJOR Trophy` 门禁通过，得到 6 个候选和 6/6 完整代表图。
+- 2026-07-17：GitHub PR #17 合并 Task 5 API 编排后，PR #18 误将其撤销；本恢复分支重新应用提交 `1543425` 与 `f93a372`，待恢复 PR 合并。
 
 ## 最后更新时间与对应 Git 提交
 
@@ -312,4 +319,4 @@ Stage 6 Task 3 已由 PR #12 合并并经用户验收。下一建议是 Task 4 R
 - Stage 6 Task 2 实现提交：`a9be8f9`；安全与原子发布加固提交：`796f42e`、`31facdd`、`6a02bb2`、`fcce6b4`；PR #10 合并提交：`ce3facd`。
 - Stage 6 Task 2 验收记录：`1744cbf`，PR #11 合并提交：`72da1c4`。
 - Stage 6 Task 3 实现提交：`d0b487f`；安全加固提交：`089cf95`、`8ca0eec`；PR #12 合并提交：`c631210`。
-- 当前工作分支：`codex/stage6-task3-acceptance`（仅记录 Task 3 验收状态）。
+- 当前工作分支：`codex/restore-stage6-task5`（恢复 Task 5 与 Task 4 真实门禁修正，待 PR 合并）。
