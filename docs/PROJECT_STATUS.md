@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1、Task 2 与 Task 3 已完成，Task 4 尚未开始。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 本地真实 AI 动作分解闭环进行中，Task 1、Task 2 与 Task 3 已完成，Task 4 代码已实现，等待本机 AI 运行时和首条视频检测门禁。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -51,6 +51,19 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - Stage 6 Task 1：本地 AI 隔离运行环境、模型/依赖供应链门禁与真实单帧推理。
 - Stage 6 Task 2：持久化分析合约、owner/job 隔离工作区、原子文件仓库与 Job compare-and-set。
 - Stage 6 Task 3：确定性媒体预检与最高 720p/30fps、只降不升的原子分析代理。
+- Stage 6 Task 4（代码部分）：RTMDet-m 可替换检测器适配器、ByteTrack 风格多人关联、候选排序、归一化摘要和代表图发布 Worker。
+
+### 当前进行中的任务
+
+#### Task：Stage 6 Task 4 真实候选舞者（代码已实现，待真实样本门禁）
+
+- [x] 纯逻辑测试覆盖短时遮挡、时间单调性、归一化框、单帧唯一分配、候选排序和短轨迹过滤。
+- [x] 检测器接口隔离 RTMDet-m，输出只包含人物框和置信度；MPS 兼容性错误仅允许一次 CPU 回退。
+- [x] Worker 消费 Task 3 代理，按轨迹生成候选摘要，并为可读图像帧写入三张去元数据 JPEG 代表图。
+- [ ] 使用 `.local-ai` Python 3.11 环境和用户指定的 `82MAJOR Trophy` 视频运行真实检测门禁。
+- [ ] 完成 Worker 全量回归、模型设备/耗时/候选数量记录，并提交 GitHub PR。
+
+当前验证：Task 4 聚焦测试 6 项通过；Task 3 媒体测试与 Task 4 聚焦测试合计 51 项通过。完整 Worker 测试在旧 `backend/.venv` 下为 76 项通过、1 项失败，失败是运行环境缺少 NumPy；应使用 Task 1 的 `.local-ai/venv/bin/python` 重跑，不把该环境失败计为模型或业务失败。
 
 ## 最近完成任务
 

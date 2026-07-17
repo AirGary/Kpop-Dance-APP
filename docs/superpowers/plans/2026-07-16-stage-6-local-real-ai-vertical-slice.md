@@ -223,19 +223,19 @@ git commit -m "feat: add AI media preflight"
 - Produces: `CandidateSet` plus three JPEG representative images per accepted track.
 - Produces: `AnalysisWorker.detect_candidates(workspace: Path) -> CandidateSet`.
 
-- [ ] **Step 1: Write tracker and candidate-ranking tests**
+- [x] **Step 1: Write tracker and candidate-ranking tests**
 
 Use synthetic detection sequences to verify ByteTrack association across short occlusion, monotonic time, normalized boxes, no cross-frame duplicate track assignment, and deterministic ranking by visible duration, median area, full-body proxy score, and stability. Reject tracks shorter than the configured minimum visible duration.
 
-- [ ] **Step 2: Run tests and confirm missing implementation failures**
+- [x] **Step 2: Run tests and confirm missing implementation failures**
 
 Run `.local-ai/venv/bin/python -m pytest backend/workers/analysis/tests/test_tracking.py backend/workers/analysis/tests/test_candidates.py backend/workers/analysis/tests/test_worker_detection.py -q`.
 
-- [ ] **Step 3: Wrap RTMDet-m behind a narrow detector adapter**
+- [x] **Step 3: Wrap RTMDet-m behind a narrow detector adapter**
 
 The `PersonDetector` adapter uses RTMDet-m by default, accepts RGB frames, and returns person-class boxes only. It owns preprocessing, device selection, thresholding, and model version reporting; downstream code must not import MMDetection tensors. On an MPS runtime error, recreate the model on CPU once and continue from the latest frame checkpoint. A future detector may replace RTMDet-m only by implementing the same adapter contract.
 
-- [ ] **Step 4: Implement ByteTrack and candidate extraction**
+- [x] **Step 4: Implement ByteTrack and candidate extraction**
 
 Use MMDetection's Apache-2.0 ByteTrack implementation behind a `PersonTracker` adapter and persist tracker checkpoints at bounded frame intervals. Representative frames must be selected from high-confidence, temporally separated samples and cropped with safe padding. Strip image metadata and use generated candidate IDs independent of model-internal track IDs.
 
@@ -243,7 +243,7 @@ Use MMDetection's Apache-2.0 ByteTrack implementation behind a `PersonTracker` a
 
 Run the worker against the user-selected `82MAJOR Trophy` file supplied via an ignored environment variable `STAGE_LAB_ACCEPTANCE_VIDEO`. Record only candidate count, elapsed time, device, and anonymized track metrics; do not copy the video or candidate images into Git or logs. Expected: at least three stable candidates with valid representative images. If this fails, tune thresholds against this single video and record each measured change rather than switching models randomly.
 
-- [ ] **Step 6: Run worker regression and commit**
+- [ ] **[in progress] Step 6: Run worker regression and commit**
 
 Run all worker tests and `./scripts/verify-local-ai.sh`.
 
