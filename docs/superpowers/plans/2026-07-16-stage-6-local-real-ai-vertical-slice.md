@@ -239,11 +239,11 @@ The `PersonDetector` adapter uses RTMDet-m by default, accepts RGB frames, and r
 
 Use MMDetection's Apache-2.0 ByteTrack implementation behind a `PersonTracker` adapter and persist tracker checkpoints at bounded frame intervals. Representative frames must be selected from high-confidence, temporally separated samples and cropped with safe padding. Strip image metadata and use generated candidate IDs independent of model-internal track IDs.
 
-- [ ] **Step 5: Run a real detection-only sample gate**
+- [x] **Step 5: Run a real detection-only sample gate**
 
-Run the worker against the user-selected `82MAJOR Trophy` file supplied via an ignored environment variable `STAGE_LAB_ACCEPTANCE_VIDEO`. Record only candidate count, elapsed time, device, and anonymized track metrics; do not copy the video or candidate images into Git or logs. Expected: at least three stable candidates with valid representative images. If this fails, tune thresholds against this single video and record each measured change rather than switching models randomly.
+Run the worker against the user-selected `82MAJOR Trophy` file supplied via an ignored environment variable `STAGE_LAB_ACCEPTANCE_VIDEO`. Record only candidate count, elapsed time, device, and anonymized track metrics; do not copy the video or candidate images into Git or logs. Expected: at least three stable candidates with valid representative images. If this fails, tune thresholds against this single video and record each measured change rather than switching models randomly. The candidate preflight uses a configurable six-frame sampling stride on CPU; target analysis must not assume this lower rate.
 
-- [ ] **[in progress] Step 6: Run worker regression and commit**
+- [x] **Step 6: Run worker regression and commit**
 
 Run all worker tests and `./scripts/verify-local-ai.sh`.
 

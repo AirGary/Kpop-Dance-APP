@@ -61,10 +61,10 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [x] 纯逻辑测试覆盖短时遮挡、时间单调性、归一化框、单帧唯一分配、候选排序和短轨迹过滤。
 - [x] 检测器接口隔离 RTMDet-m，输出只包含人物框和置信度；MPS 兼容性错误仅允许一次 CPU 回退。
 - [x] Worker 消费 Task 3 代理，按轨迹生成候选摘要，并为可读图像帧写入三张去元数据 JPEG 代表图。
-- [ ] 使用 `.local-ai` Python 3.11 环境和用户指定的 `82MAJOR Trophy` 视频运行真实检测门禁。
-- [ ] 完成 Worker 全量回归、模型设备/耗时/候选数量记录，并提交 GitHub PR。
+- [x] 使用 `.local-ai` Python 3.11 环境和用户指定的 `82MAJOR Trophy` 视频运行真实检测门禁：6 个候选、6 组代表图完整、分析代理生成成功；结果仅保存在 `/tmp`。
+- [x] 完成 Worker 全量回归、模型设备/耗时/候选数量记录，并将采样策略和结构化 runner 输出提交到 Task 5 PR。
 
-当前验证：Task 4 聚焦测试 6 项通过；Task 3 媒体测试与 Task 4 聚焦测试合计 51 项通过。完整 Worker 测试在旧 `backend/.venv` 下为 76 项通过、1 项失败，失败是运行环境缺少 NumPy；应使用 Task 1 的 `.local-ai/venv/bin/python` 重跑，不把该环境失败计为模型或业务失败。
+当前验证：Task 4 聚焦测试 6 项通过；`./scripts/verify-local-ai.sh` 为 77 项通过，RTMDet-m/RTMPose-m CPU 探针通过；真实视频预检检测耗时约 4 分钟，使用每 6 帧采样，候选数 6，代表图完整率 6/6。
 
 #### Task：Stage 6 Task 5 FastAPI 两阶段分析编排（API 骨架已实现，待真实模型联调）
 
@@ -73,9 +73,9 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [x] API 与状态机测试、OpenAPI 合约和标准后端回归通过。
 - [ ] 使用真实 `.local-ai` 环境和 `82MAJOR Trophy` 视频返回非空候选列表。
 - [ ] 实现 `resume_pending()` 的重启恢复和 Task 7 目标分析结果。
-- [ ] 必须先实现并验证 Task 5，不能直接开始 Task 7。
+- [ ] 必须先完成 Task 5 的真实 API 候选联调和重启恢复，不能直接开始 Task 7。
 
-当前验证：`./scripts/verify-backend.sh` 为 198 项通过；本地 FastAPI smoke 已完成上传完成到候选查询，当前因 `.local-ai` 环境缺失进入 `failedRecoverable` 并返回空候选，不视为真实 AI 通过。
+当前验证：`./scripts/verify-backend.sh` 为 198 项通过；本地 FastAPI smoke 已完成上传完成到候选查询，缺失模型时进入 `failedRecoverable` 并返回空候选；真实 worker 已在独立命令中返回 6 个候选，但尚未通过 iOS -> FastAPI -> worker 的完整真实链路。
 
 #### Task：Stage 6 Task 6 iOS 真实分析接入（代码已实现，待 Xcode 运行验收）
 

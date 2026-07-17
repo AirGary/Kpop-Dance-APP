@@ -13,7 +13,9 @@ class FrameReader(Protocol):
     def __call__(self, proxy: Path) -> Iterable[tuple[float, object, int, int]]: ...
 
 
-def _opencv_frames(proxy: Path):
+def _opencv_frames(proxy: Path, frame_stride: int = 1):
+    if frame_stride < 1:
+        raise ValueError("frame stride must be positive")
     try:
         import cv2
     except ImportError as error:
@@ -28,8 +30,9 @@ def _opencv_frames(proxy: Path):
             success, frame = capture.read()
             if not success:
                 break
-            height, width = frame.shape[:2]
-            yield frame_index / fps, frame, width, height
+            if frame_index % frame_stride == 0:
+                height, width = frame.shape[:2]
+                yield frame_index / fps, frame, width, height
             frame_index += 1
     finally:
         capture.release()
@@ -43,18 +46,27 @@ class AnalysisWorker:
         frame_reader: FrameReader = _opencv_frames,
         tracker: ByteTrackPersonTracker | None = None,
         candidate_extractor: CandidateExtractor | None = None,
+        frame_stride: int = 1,
     ) -> None:
         self.detector = detector
         self.frame_reader = frame_reader
         self.tracker = tracker or ByteTrackPersonTracker()
         self.candidate_extractor = candidate_extractor or CandidateExtractor()
+        if frame_stride < 1:
+            raise ValueError("frame stride must be positive")
+        self.frame_stride = frame_stride
 
     def detect_candidates(self, workspace: Path) -> CandidateSet:
         proxy = workspace / "proxy.mp4" if workspace.name == "analysis" else workspace / "analysis" / "proxy.mp4"
         if not proxy.is_file():
             raise FileNotFoundError("analysis proxy is missing")
         frame_samples: dict[int, list[tuple[float, object, object]]] = {}
-        for time_seconds, frame, _, _ in self.frame_reader(proxy):
+        reader = self.frame_reader
+        try:
+            frames = reader(proxy, self.frame_stride)  # type: ignore[call-arg]
+        except TypeError:
+            frames = reader(proxy)
+        for time_seconds, frame, _, _ in frames:
             detections = tuple(
                 Detection(time_seconds, detection.box, detection.confidence)
                 for detection in self.detector.detect(frame)

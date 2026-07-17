@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stdout
 import json
+import sys
 from pathlib import Path
 
 from .candidates import Candidate
@@ -16,6 +18,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument("--model-root", required=True, type=Path)
     parser.add_argument("--candidate-id")
+    parser.add_argument("--frame-stride", type=int, default=6)
     return parser.parse_args()
 
 
@@ -46,10 +49,10 @@ def main() -> None:
         checkpoint=str(model_root / "rtmdet-m-person.pth"),
         device="cpu",
     )
-    candidates = AnalysisWorker(detector=detector).detect_candidates(proxy.parent).candidates
+    with redirect_stdout(sys.stderr):
+        candidates = AnalysisWorker(detector=detector, frame_stride=args.frame_stride).detect_candidates(proxy.parent).candidates
     print(json.dumps({"candidates": [_candidate_json(candidate) for candidate in candidates]}, separators=(",", ":")))
 
 
 if __name__ == "__main__":
     main()
-
