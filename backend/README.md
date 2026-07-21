@@ -235,3 +235,23 @@ MP4 copy, uploads it in resumable chunks, validates it, and displays the first
 eight characters of the new draft Job ID. The original imported video remains
 unchanged. The separate `元数据诊断连接` card continues to test Jobs API without
 uploading video bytes.
+
+## Stage 6 Task 9 Repeatable Local AI Demo
+
+Use the repository-root helper for a protected local AI run:
+
+```bash
+./scripts/run-local-ai-demo.sh
+```
+
+It starts `APP_ENVIRONMENT=local-ai` on loopback, creates a random short-lived
+pairing token in a mode-600 temporary environment file, waits for `/health`,
+and removes the file and runtime objects on exit. The helper never prints the
+token. Source the printed environment file before launching the Debug app. For
+a real iPhone, pass a private RFC1918 IPv4 address with `--bind`; public
+addresses and arbitrary host names are rejected. See
+`docs/development/local-ai-demo.md` for the exact simulator and LAN steps.
+
+The local AI backend now requires the matching `X-Stage-Lab-Pairing-Token` on
+every protected request in `local-ai` mode. Development mode remains loopback
+only and uses its existing Bearer identity without a pairing token.

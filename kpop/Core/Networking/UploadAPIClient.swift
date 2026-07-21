@@ -86,7 +86,7 @@ nonisolated struct UploadAPIClient: Sendable {
             throw UploadAPIError.encoding
         }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        addAuthenticationHeaders(to: &request)
         request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         let (data, _) = try await perform(request, successCodes: [200, 201])
         do {
@@ -171,7 +171,7 @@ nonisolated struct UploadAPIClient: Sendable {
             )
         )
         request.httpMethod = "POST"
-        request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        addAuthenticationHeaders(to: &request)
         request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         let (data, _) = try await perform(request, successCodes: [200, 201])
         do {
@@ -188,8 +188,15 @@ nonisolated struct UploadAPIClient: Sendable {
             )
         )
         request.httpMethod = "DELETE"
-        request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        addAuthenticationHeaders(to: &request)
         _ = try await perform(request, successCodes: [204])
+    }
+
+    private func addAuthenticationHeaders(to request: inout URLRequest) {
+        request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        if let pairingToken = configuration.pairingToken {
+            request.setValue(pairingToken, forHTTPHeaderField: "X-Stage-Lab-Pairing-Token")
+        }
     }
 
     private func perform(

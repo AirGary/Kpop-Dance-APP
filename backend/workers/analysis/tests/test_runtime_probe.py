@@ -12,6 +12,7 @@ from stage_lab_analysis.runtime_probe import (
     ModelManifestError,
     PythonVersionError,
     RuntimeProbeError,
+    _is_supported_mps_failure,
     choose_device,
     load_model_manifest,
     require_python_311,
@@ -117,6 +118,17 @@ def test_choose_device_skips_mps_when_it_is_unavailable() -> None:
 
     assert choose_device(mps_available=False, probe=probe) == "cpu"
     assert calls == [("detector", "cpu"), ("pose", "cpu")]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "nms_impl: implementation for device mps:0 not found",
+        "MPS backend does not support this operation",
+    ],
+)
+def test_mps_probe_recognizes_known_mmcv_fallback_errors(message: str) -> None:
+    assert _is_supported_mps_failure(RuntimeError(message))
 
 
 def test_bootstrap_handles_chumpy_legacy_build_before_worker_install() -> None:

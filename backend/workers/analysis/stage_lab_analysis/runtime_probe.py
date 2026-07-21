@@ -228,6 +228,7 @@ def _is_supported_mps_failure(error: Exception) -> bool:
         marker in message
         for marker in (
             "mps backend",
+            "nms_impl: implementation for device mps",
             "not implemented for 'mps'",
             "not currently implemented for the mps device",
             "placeholder storage has not been allocated on mps",
