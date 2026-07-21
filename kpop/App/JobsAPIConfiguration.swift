@@ -20,7 +20,8 @@ nonisolated struct JobsAPIConfiguration: Equatable, Sendable {
         }
         guard let value = infoDictionary["STAGE_LAB_API_BASE_URL"] as? String,
               let url = URL(string: value),
-              url.port == 8000,
+              let port = url.port,
+              (1...65535).contains(port),
               url.scheme == "http"
         else {
             throw JobsAPIError.invalidConfiguration

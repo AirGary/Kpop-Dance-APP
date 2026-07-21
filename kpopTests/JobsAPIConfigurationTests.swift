@@ -56,4 +56,15 @@ struct JobsAPIConfigurationTests {
 
         #expect(configuration.pairingToken == "temporary-token")
     }
+
+    @Test
+    func localAIAcceptsCustomPortFromLauncher() throws {
+        let result = try JobsAPIConfiguration.from(infoDictionary: [
+            "STAGE_LAB_ENVIRONMENT": "local-ai",
+            "STAGE_LAB_API_BASE_URL": "http://127.0.0.1:18000",
+            "STAGE_LAB_PAIRING_TOKEN": "temporary-token"
+        ])
+
+        #expect(result?.baseURL.port == 18000)
+    }
 }

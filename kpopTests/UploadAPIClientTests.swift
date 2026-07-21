@@ -37,6 +37,38 @@ struct UploadAPIClientTests {
     }
 
     @Test
+    func localAIAddsPairingTokenToProtectedUploadRequests() async throws {
+        var paths: [String] = []
+        let transport = HTTPTransport { request in
+            paths.append(request.url!.path)
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dev-user-a")
+            #expect(request.value(forHTTPHeaderField: "X-Stage-Lab-Pairing-Token") == "temporary-token")
+            switch request.httpMethod {
+            case "POST" where request.url!.path.hasSuffix("/complete"):
+                return (self.jobJSON(), self.response(status: 201, request: request))
+            case "DELETE":
+                return (Data(), self.response(status: 204, request: request))
+            default:
+                return (self.sessionJSON(), self.response(status: 201, request: request))
+            }
+        }
+        let client = UploadAPIClient(
+            configuration: JobsAPIConfiguration(
+                baseURL: URL(string: "http://127.0.0.1:18000")!,
+                bearerToken: "dev-user-a",
+                pairingToken: "temporary-token"
+            ),
+            transport: transport
+        )
+
+        _ = try await client.create(input(), idempotencyKey: "create-key")
+        _ = try await client.complete(uploadID: uploadID, idempotencyKey: "complete-key")
+        try await client.abandon(uploadID: uploadID)
+
+        #expect(paths == ["/v1/uploads", "/v1/uploads/\(uploadID.uuidString)/complete", "/v1/uploads/\(uploadID.uuidString)"])
+    }
+
+    @Test
     func offsetUsesSignedURLVerbatimWithoutBearer() async throws {
         let signedURL = URL(string: "http://127.0.0.1:8000/v1/uploads/\(uploadID)/content?token=secret")!
         let transport = HTTPTransport { request in
