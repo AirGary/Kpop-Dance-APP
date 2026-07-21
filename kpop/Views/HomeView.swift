@@ -2,7 +2,9 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \DanceProject.updatedAt, order: .reverse) private var projects: [DanceProject]
+    @State private var projectPendingDeletion: DanceProject?
 
     var body: some View {
         ScrollView {
@@ -59,6 +61,20 @@ struct HomeView: View {
                                 ProjectRow(project: project)
                             }
                             .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    projectPendingDeletion = project
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
+                            }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    projectPendingDeletion = project
+                                } label: {
+                                    Label("删除项目", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
@@ -74,6 +90,60 @@ struct HomeView: View {
                 }
             }
         }
+        .alert("删除这个项目？", isPresented: deletionAlertBinding) {
+            Button("取消", role: .cancel) {
+                projectPendingDeletion = nil
+            }
+            Button("删除", role: .destructive) {
+                if let projectPendingDeletion {
+                    deleteProject(projectPendingDeletion)
+                }
+                self.projectPendingDeletion = nil
+            }
+        } message: {
+            Text("项目、App 内视频副本和分析结果会被删除。Mac 原始视频不会被删除。")
+        }
+    }
+
+    private var deletionAlertBinding: Binding<Bool> {
+        Binding(
+            get: { projectPendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    projectPendingDeletion = nil
+                }
+            }
+        )
+    }
+
+    private func deleteProject(_ project: DanceProject) {
+        deleteImportedVideoIfManaged(project.sourceVideoPath)
+        deleteAnalysisPackageIfPresent(project)
+        modelContext.delete(project)
+        try? modelContext.save()
+    }
+
+    private func deleteImportedVideoIfManaged(_ path: String?) {
+        guard
+            let path,
+            let applicationSupport = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first
+        else { return }
+
+        let fileURL = URL(fileURLWithPath: path).standardizedFileURL
+        let rootURL = applicationSupport.standardizedFileURL
+        guard fileURL.path.hasPrefix(rootURL.path + "/") else { return }
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    private func deleteAnalysisPackageIfPresent(_ project: DanceProject) {
+        guard let relativePath = project.analysisPackageRelativePath,
+              let managedPath = try? ManagedFilePath(relativePath),
+              let packageStore = try? AnalysisPackageStore.applicationSupport()
+        else { return }
+        try? packageStore.delete(managedPath)
     }
 
     private var practiceReadyProjects: [DanceProject] {
