@@ -1,6 +1,23 @@
 import SwiftUI
 import UIKit
 
+enum DancerPickPresentationState: Equatable {
+    case loading
+    case candidates([DancerCandidate])
+    case failed(String, recoverable: Bool)
+}
+
+func dancerPickPresentationState(for state: RealAnalysisState) -> DancerPickPresentationState {
+    switch state {
+    case .awaitingTarget(let candidates):
+        return .candidates(candidates)
+    case .failed(let message, let recoverable):
+        return .failed(message, recoverable: recoverable)
+    default:
+        return .loading
+    }
+}
+
 struct DancerPickView: View {
     @EnvironmentObject private var router: AppRouter
     @Environment(\.analysisService) private var analysisService
@@ -34,24 +51,41 @@ struct DancerPickView: View {
                                 }
                             }
                         }
-                    } else if !liveCandidates.isEmpty {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            ForEach(liveCandidates) { candidate in
-                                LiveDancerOptionCard(
-                                    candidate: candidate,
-                                    analysisAPIClient: analysisAPIClient,
-                                    jobID: remoteJobUUID,
-                                    isSelected: selectedCandidateID == candidate.id
-                                ) {
-                                    selectedCandidateID = candidate.id
+                    } else if let realAnalysisModel {
+                        switch dancerPickPresentationState(for: realAnalysisModel.state) {
+                        case .candidates(let candidates) where !candidates.isEmpty:
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                ForEach(candidates) { candidate in
+                                    LiveDancerOptionCard(
+                                        candidate: candidate,
+                                        analysisAPIClient: analysisAPIClient,
+                                        jobID: remoteJobUUID,
+                                        isSelected: selectedCandidateID == candidate.id
+                                    ) {
+                                        selectedCandidateID = candidate.id
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        HStack {
-                            ProgressView()
-                            Text("正在读取真实候选舞者…")
+                        case .candidates:
+                            Text("尚未得到有效候选舞者，请重新检测。")
                                 .foregroundStyle(AppUI.inkSoft)
+                        case .failed(let message, let recoverable):
+                            VStack(alignment: .leading, spacing: 10) {
+                                Label(message, systemImage: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.red)
+                                if recoverable {
+                                    Button("重试读取状态") {
+                                        Task { await realAnalysisModel.start(project: project) }
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        case .loading:
+                            HStack {
+                                ProgressView()
+                                Text("正在读取真实候选舞者…")
+                                    .foregroundStyle(AppUI.inkSoft)
+                            }
                         }
                     }
                 }
@@ -114,13 +148,6 @@ struct DancerPickView: View {
             realAnalysisModel = model
             await model.start(project: project)
         }
-    }
-
-    private var liveCandidates: [DancerCandidate] {
-        guard let realAnalysisModel, case .awaitingTarget(let candidates) = realAnalysisModel.state else {
-            return []
-        }
-        return candidates
     }
 
     private var remoteJobUUID: UUID? {

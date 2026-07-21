@@ -138,3 +138,42 @@ async def test_target_selection_idempotency_key_cannot_change_candidate(tmp_path
 
     assert error.value.status_code == 409
     await coordinator.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_target_selection_cannot_switch_candidate_after_first_selection(tmp_path):
+    jobs = FileJobRepository(tmp_path)
+    response = job().model_copy(update={"state": AnalysisJobState.AWAITING_TARGET, "progress": 0.5})
+    await jobs.create(JobRecord("dev-user-a", "upload", "hash", response))
+    repository = FileAnalysisRepository(tmp_path)
+    await repository.update("dev-user-a", JOB_ID, response)
+    await repository.set_candidates("dev-user-a", JOB_ID, [candidate(), candidate("candidate-2")])
+    runner = FakeRunner()
+    coordinator = AnalysisCoordinator(JobService(jobs, LocalObjectStore(tmp_path)), repository, LocalAnalysisWorkspace(tmp_path), runner)
+
+    await coordinator.select_target("dev-user-a", JOB_ID, "candidate-1", "selection-1")
+    with pytest.raises(APIError) as error:
+        await coordinator.select_target("dev-user-a", JOB_ID, "candidate-2", "selection-2")
+
+    assert error.value.status_code == 409
+    await coordinator.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_content_path_cannot_escape_analysis_directory(tmp_path):
+    jobs = FileJobRepository(tmp_path)
+    response = job()
+    await jobs.create(JobRecord("dev-user-a", "upload", "hash", response))
+    repository = FileAnalysisRepository(tmp_path)
+    await repository.update("dev-user-a", JOB_ID, response)
+    coordinator = AnalysisCoordinator(
+        JobService(jobs, LocalObjectStore(tmp_path)),
+        repository,
+        LocalAnalysisWorkspace(tmp_path),
+        FakeRunner(),
+    )
+
+    resolved = coordinator.result_content_path("dev-user-a", JOB_ID, "source.mp4")
+
+    assert resolved == tmp_path / "dev-user-a" / str(JOB_ID) / "analysis" / "source.mp4"
+    await coordinator.shutdown()

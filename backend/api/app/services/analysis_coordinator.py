@@ -62,6 +62,8 @@ class AnalysisCoordinator:
         previous = await self._repository.target_selection(owner_id, job_id)
         if previous is not None:
             previous_candidate, previous_key = previous
+            if previous_candidate != candidate_id:
+                raise APIError(409, "target_already_selected", "A different target dancer is already selected.")
             if previous_key == idempotency_key and previous_candidate == candidate_id:
                 return await self._jobs.get_job(owner_id, job_id)
             if previous_key == idempotency_key:
@@ -89,8 +91,9 @@ class AnalysisCoordinator:
         candidate = PurePosixPath(relative_path)
         if candidate.is_absolute() or any(part in {"", ".", ".."} for part in candidate.parts):
             raise APIError(404, "result_not_found", "Analysis result was not found.")
-        path = (self._workspace.analysis_directory(owner_id, job_id).parent / Path(*candidate.parts)).resolve()
-        if not path.is_relative_to(self._workspace.analysis_directory(owner_id, job_id).parent.resolve()):
+        analysis_directory = self._workspace.analysis_directory(owner_id, job_id).resolve()
+        path = (analysis_directory / Path(*candidate.parts)).resolve()
+        if not path.is_relative_to(analysis_directory):
             raise APIError(404, "result_not_found", "Analysis result was not found.")
         return path
 
