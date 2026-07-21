@@ -79,6 +79,10 @@ class AnalysisCoordinator:
         await self._require_owner(owner_id, job_id)
         return await self._repository.result(owner_id, job_id)
 
+    async def content_path(self, owner_id: str, job_id: UUID, relative_path: str) -> Path:
+        await self._require_owner(owner_id, job_id)
+        return self.result_content_path(owner_id, job_id, relative_path)
+
     def result_content_path(self, owner_id: str, job_id: UUID, relative_path: str):
         from pathlib import PurePosixPath
 

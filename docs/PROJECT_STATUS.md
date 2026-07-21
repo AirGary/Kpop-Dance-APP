@@ -120,6 +120,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 验收：`verify-local-ai.sh`、`verify-backend.sh`、`verify-ios.sh` 全部通过；真实视频完成候选、选人、目标分析、导入、聚光、骨架、低置信度、时间轴、难度/重复、速度、镜像、循环和离线重启检查；记录实际耗时、包大小、限制和未执行项目。
 - 当前状态：Task 9 实现和自动门禁已完成，状态为“待验收”；真实视频短片链路通过，等待用户在 Xcode/真机完成视觉和离线产品检查。
 - 实际证据：本地 AI `89 passed`，后端 `207 passed, 1 skipped`，iOS 测试及 Staging/Release 构建通过；真实 smoke `1 passed in 31.35s`。完整记录见 `docs/ai/ACCEPTANCE_2026-07-21.md`。
+- 2026-07-21 次要联调修补：真实 App 上传、候选和目标分析均成功，但候选图/结果包曾被错误拼接到 API 根路径而返回 `404`；已改为带 Job 作用域和认证头的内容路由，真实 smoke 增加候选图下载验证并通过 `1 passed in 32.61s`。该修补另行提交 PR，未修改用户已有 Xcode 工程改动。
 
 ## 最近完成任务
 

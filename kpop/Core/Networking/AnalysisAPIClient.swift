@@ -56,7 +56,7 @@ nonisolated struct AnalysisAPIClient: Sendable {
         let candidates: [AnalysisCandidateDTO] = try await perform(request, successCodes: [200])
         for candidate in candidates {
             for path in candidate.representativeImagePaths {
-                _ = try contentURL(relativePath: path)
+                _ = try contentURL(jobID: jobID, relativePath: path)
             }
         }
         return candidates
@@ -77,12 +77,12 @@ nonisolated struct AnalysisAPIClient: Sendable {
     func result(jobID: UUID) async throws -> AnalysisResultDTO {
         let request = makeRequest(path: "v1/jobs/\(jobID.uuidString)/result", method: "GET")
         let result: AnalysisResultDTO = try await perform(request, successCodes: [200])
-        _ = try contentURL(relativePath: result.contentPath)
+        _ = try contentURL(jobID: jobID, relativePath: result.contentPath)
         return result
     }
 
-    func downloadContent(relativePath: String) async throws -> Data {
-        let url = try contentURL(relativePath: relativePath)
+    func downloadContent(jobID: UUID, relativePath: String) async throws -> Data {
+        let url = try contentURL(jobID: jobID, relativePath: relativePath)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
@@ -108,14 +108,20 @@ nonisolated struct AnalysisAPIClient: Sendable {
         }
     }
 
-    func contentURL(relativePath: String) throws -> URL {
+    func contentURL(jobID: UUID, relativePath: String) throws -> URL {
         let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard
             !relativePath.isEmpty,
             !relativePath.contains("\\"),
             !relativePath.hasPrefix("/"),
-            !components.contains(where: { $0 == "." || $0 == ".." }),
-            let url = URL(string: relativePath, relativeTo: configuration.baseURL)?.absoluteURL,
+            !components.contains(where: { $0 == "." || $0 == ".." })
+        else {
+            throw AnalysisAPIError.invalidContentPath
+        }
+        let url = configuration.baseURL.appending(
+            path: "v1/jobs/\(jobID.uuidString)/content/\(relativePath)"
+        )
+        guard
             url.scheme == configuration.baseURL.scheme,
             url.host == configuration.baseURL.host,
             url.port == configuration.baseURL.port

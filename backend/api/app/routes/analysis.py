@@ -56,3 +56,20 @@ async def result_content(job_id: UUID, user: Annotated[AuthenticatedUser, Depend
     if not path.is_file():
         raise APIError(404, "result_not_found", "Analysis result was not found.")
     return FileResponse(path, media_type="application/zip")
+
+
+@router.get("/{job_id}/content/{relative_path:path}", name="analysis_content")
+async def content(
+    job_id: UUID,
+    relative_path: str,
+    user: Annotated[AuthenticatedUser, Depends(authenticated_user)],
+    request: Request,
+):
+    coordinator = request.app.state.container.analysis_coordinator
+    if coordinator is None:
+        raise APIError(503, "analysis_unavailable", "Local analysis is not enabled.")
+    path = await coordinator.content_path(user.user_id, job_id, relative_path)
+    if not path.is_file():
+        raise APIError(404, "content_not_found", "Analysis content was not found.")
+    media_type = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "application/octet-stream"
+    return FileResponse(path, media_type=media_type)
