@@ -70,6 +70,7 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
         environment="local-ai",
         object_storage_root=tmp_path,
         local_ai_model_root=model_root,
+        local_ai_frame_stride=int(os.environ.get("LOCAL_AI_FRAME_STRIDE", "6")),
     )
     headers = {"Authorization": "Bearer dev-user-a"}
 
@@ -82,7 +83,10 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
             candidates = response.json()
             if candidates:
                 break
-            client.get(f"/v1/jobs/{job_id}", headers=headers)
+            state = client.get(f"/v1/jobs/{job_id}", headers=headers)
+            assert state.status_code == 200
+            if state.json()["state"] == "failedRecoverable":
+                pytest.fail(f"candidate detection failed: {state.json()}")
             import time
             time.sleep(1)
         assert len(candidates) >= 3
@@ -98,4 +102,22 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
             json={"candidateId": candidates[0]["candidateId"]},
         )
         assert selected.status_code == 200
-        assert selected.json()["state"] in {"queued", "analyzing", "failedRecoverable"}
+        assert selected.json()["state"] in {"queued", "analyzing", "resultReady", "failedRecoverable"}
+        if selected.json()["state"] == "failedRecoverable":
+            pytest.fail(f"target analysis failed: {selected.json()}")
+        for _ in range(600):
+            state = restarted.get(f"/v1/jobs/{job_id}", headers=headers)
+            assert state.status_code == 200
+            if state.json()["state"] == "resultReady":
+                break
+            if state.json()["state"] == "failedRecoverable":
+                pytest.fail(f"target analysis failed: {state.json()}")
+            import time
+            time.sleep(1)
+        assert state.json()["state"] == "resultReady"
+        result = restarted.get(f"/v1/jobs/{job_id}/result", headers=headers)
+        assert result.status_code == 200
+        assert result.json()["contentPath"] == "analysis/result-v1.zip"
+        content = restarted.get(f"/v1/jobs/{job_id}/result/content", headers=headers)
+        assert content.status_code == 200
+        assert content.content[:2] == b"PK"

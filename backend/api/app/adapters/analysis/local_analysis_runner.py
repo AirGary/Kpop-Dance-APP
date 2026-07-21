@@ -10,10 +10,19 @@ from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResp
 
 
 class LocalAnalysisRunner(AnalysisRunner):
-    def __init__(self, workspace_root: Path, worker_root: Path, model_root: Path, python_path: Path) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        worker_root: Path,
+        model_root: Path,
+        python_path: Path,
+        *,
+        frame_stride: int = 6,
+    ) -> None:
         self._workspace_root = workspace_root.resolve()
         self._worker_root = worker_root.resolve()
         self._model_root = model_root.resolve()
+        self._frame_stride = frame_stride
         # Keep the virtualenv launcher symlink so sys.prefix remains the local AI environment.
         self._python_path = python_path.absolute()
         self._processes: set[asyncio.subprocess.Process] = set()
@@ -48,6 +57,7 @@ class LocalAnalysisRunner(AnalysisRunner):
         ]
         if candidate_id is not None:
             command.extend(["--candidate-id", candidate_id])
+        command.extend(["--frame-stride", str(self._frame_stride)])
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(self._worker_root)
         process = await asyncio.create_subprocess_exec(
