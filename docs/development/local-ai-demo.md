@@ -61,7 +61,9 @@ directory.
 1. App uploads the managed local video copy to `POST /v1/uploads` and completes it.
 2. FastAPI starts detection and exposes candidates at `GET /v1/jobs/{id}/dancers`.
 3. App selects one candidate at `POST /v1/jobs/{id}/target`.
-4. Worker writes `analysis/result-v1.zip`; App downloads it through the protected result-content route.
+4. Candidate images and `analysis/result-v1.zip` are downloaded through the
+   protected `GET /v1/jobs/{id}/content/{relativePath}` route; the Job scope is
+   required so relative paths cannot be fetched from the API root.
 5. App verifies and saves the package under Application Support for offline practice.
 
 ## Privacy Boundary

@@ -95,6 +95,13 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
             time.sleep(1)
         assert len(candidates) >= 3
         assert all(len(item["representativeImagePaths"]) == 3 for item in candidates)
+        candidate_image_path = candidates[0]["representativeImagePaths"][0]
+        candidate_image = client.get(
+            f"/v1/jobs/{job_id}/content/{candidate_image_path}",
+            headers=headers,
+        )
+        assert candidate_image.status_code == 200
+        assert candidate_image.headers["content-type"].startswith("image/jpeg")
 
     with TestClient(create_app(settings=settings)) as restarted:
         recovered = restarted.get(f"/v1/jobs/{job_id}/dancers", headers=headers)

@@ -21,4 +21,5 @@ def test_openapi_exposes_only_approved_operations(client):
         ("POST", "/v1/jobs/{job_id}/target"),
         ("GET", "/v1/jobs/{job_id}/result"),
         ("GET", "/v1/jobs/{job_id}/result/content"),
+        ("GET", "/v1/jobs/{job_id}/content/{relative_path}"),
     }

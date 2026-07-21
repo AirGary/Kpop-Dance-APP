@@ -71,13 +71,13 @@ struct AnalysisAPIClientTests {
     func downloadsPrivateResultContentWithAuthHeaders() async throws {
         let transport = HTTPTransport { request in
             #expect(request.httpMethod == "GET")
-            #expect(request.url?.path == "/analysis/result-v1.zip")
+            #expect(request.url?.path == "/v1/jobs/\(self.jobID.uuidString)/content/analysis/result-v1.zip")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dev-user-a")
             return (Data([0x50, 0x4b, 0x03, 0x04]), self.response(status: 200, request: request))
         }
         let client = AnalysisAPIClient(configuration: configuration(), transport: transport)
 
-        let data = try await client.downloadContent(relativePath: "analysis/result-v1.zip")
+        let data = try await client.downloadContent(jobID: jobID, relativePath: "analysis/result-v1.zip")
 
         #expect(data == Data([0x50, 0x4b, 0x03, 0x04]))
     }
@@ -87,12 +87,12 @@ struct AnalysisAPIClientTests {
         let client = AnalysisAPIClient(configuration: configuration())
 
         #expect(throws: AnalysisAPIError.invalidContentPath) {
-            try client.contentURL(relativePath: "../private.jpg")
+            try client.contentURL(jobID: jobID, relativePath: "../private.jpg")
         }
         #expect(throws: AnalysisAPIError.invalidContentPath) {
-            try client.contentURL(relativePath: "https://example.com/private.jpg")
+            try client.contentURL(jobID: jobID, relativePath: "https://example.com/private.jpg")
         }
-        #expect(try client.contentURL(relativePath: "analysis/candidates/1.jpg").host == "127.0.0.1")
+        #expect(try client.contentURL(jobID: jobID, relativePath: "analysis/candidates/1.jpg").host == "127.0.0.1")
     }
 
     private func configuration() -> JobsAPIConfiguration {

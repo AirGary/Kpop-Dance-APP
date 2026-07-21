@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct DancerPickView: View {
     @EnvironmentObject private var router: AppRouter
@@ -38,7 +39,8 @@ struct DancerPickView: View {
                             ForEach(liveCandidates) { candidate in
                                 LiveDancerOptionCard(
                                     candidate: candidate,
-                                    imageURL: imageURL(for: candidate),
+                                    analysisAPIClient: analysisAPIClient,
+                                    jobID: remoteJobUUID,
                                     isSelected: selectedCandidateID == candidate.id
                                 ) {
                                     selectedCandidateID = candidate.id
@@ -121,29 +123,27 @@ struct DancerPickView: View {
         return candidates
     }
 
-    private func imageURL(for candidate: DancerCandidate) -> URL? {
-        guard let firstPath = candidate.representativeImagePaths.first else { return nil }
-        guard let analysisAPIClient else { return nil }
-        return try? analysisAPIClient.contentURL(relativePath: firstPath)
+    private var remoteJobUUID: UUID? {
+        guard let remoteJobId = project.remoteJobId else { return nil }
+        return UUID(uuidString: remoteJobId)
     }
 }
 
 private struct LiveDancerOptionCard: View {
     let candidate: DancerCandidate
-    let imageURL: URL?
+    let analysisAPIClient: AnalysisAPIClient?
+    let jobID: UUID?
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
-                AsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .success(let image): image.resizable().scaledToFill()
-                    default:
-                        ZStack { Color.black.opacity(0.08); Image(systemName: "figure.dance").font(.title) }
-                    }
-                }
+                AuthenticatedCandidateImage(
+                    client: analysisAPIClient,
+                    jobID: jobID,
+                    path: candidate.representativeImagePaths.first
+                )
                 .frame(height: 120)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
@@ -163,6 +163,33 @@ private struct LiveDancerOptionCard: View {
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(isSelected ? AppUI.violet : AppUI.divider, lineWidth: 1))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct AuthenticatedCandidateImage: View {
+    let client: AnalysisAPIClient?
+    let jobID: UUID?
+    let path: String?
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Color.black.opacity(0.08)
+                    Image(systemName: "figure.dance").font(.title)
+                }
+            }
+        }
+        .task(id: "\(jobID?.uuidString ?? "missing")-\(path ?? "missing")") {
+            guard let client, let jobID, let path else { return }
+            guard let data = try? await client.downloadContent(jobID: jobID, relativePath: path) else { return }
+            image = UIImage(data: data)
+        }
     }
 }
 

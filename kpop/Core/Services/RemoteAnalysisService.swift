@@ -77,7 +77,7 @@ actor RemoteAnalysisService: AnalysisService, AnalysisPackageDownloader {
 
     func downloadPackage(result: AnalysisResultDescriptor) async throws -> Data {
         do {
-            return try await client.downloadContent(relativePath: result.packageName)
+            return try await client.downloadContent(jobID: result.jobID, relativePath: result.packageName)
         } catch {
             throw map(error)
         }
