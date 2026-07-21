@@ -100,14 +100,14 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - [ ] 当前真实门禁使用 `--frame-stride 30` 低成本采样；完整 30fps 目标精度、身份确认和 iOS 结果包渲染留到后续验收。
 - [x] iOS 练习页导入和渲染留到 Task 8，不在本轮修改。
 
-#### Task：Stage 6 Task 8 iOS Analysis Package 导入与练习页渲染（进行中）
+#### Task：Stage 6 Task 8 iOS Analysis Package 导入与练习页渲染（待验收）
 
 - 范围：下载并校验 `result-v1.zip`，解析姿态轨迹、聚光轨迹、动作时间轴和置信度，接入现有练习页播放器。
 - 不包含：云端 GPU、账号登录、音乐语义分段、完整 30fps 精度和动作纠错。
 - 验收：真实 FastAPI 结果可在 iOS 本地保存；练习页能显示目标聚光、骨架开关、动作节点、难度和循环练习；下载失败或结果损坏时有可恢复错误状态。
 - 测试：Swift 单元测试、iOS 构建、真实本地 API 联调；Simulator 视频解码问题继续记录，不把模拟器画面当作真实 iPhone 验收。
 - 2026-07-21 用户确认开始 Task 8；首个实现范围为无压缩 ZIP 结果包解析、SHA-256/字节数校验、本地原子落盘、练习页真实时间轴、聚光框和骨架开关。
-- 2026-07-21：结果包解析/API 下载聚焦 Swift 测试通过；`./scripts/verify-ios.sh` 通过（完整测试、UI 启动、Staging、Release）；后端 `203 passed, 1 skipped`；32 秒真实视频 FastAPI smoke 通过（`1 passed in 32.37s`）。
+- 2026-07-21：结果包解析/API 下载聚焦 Swift 测试通过；`./scripts/verify-ios.sh` 通过（完整测试、UI 启动、Staging、Release）；后端 `203 passed, 1 skipped`；32 秒真实视频 FastAPI smoke 通过（`1 passed in 32.37s`）。实现提交 `d41ae05`，Draft PR #22 已推送，等待用户审核合并。
 - 2026-07-21：真实短片首次目标分析发现 RTMPose 边界点越界，已在姿态适配器增加有限值检查和 `[0,1]` 裁剪，并通过回归测试；不是结果包格式错误。
 
 ## 最近完成任务
