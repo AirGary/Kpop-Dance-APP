@@ -1,6 +1,6 @@
 import Foundation
 
-actor RemoteAnalysisService: AnalysisService {
+actor RemoteAnalysisService: AnalysisService, AnalysisPackageDownloader {
     private let client: AnalysisAPIClient
 
     init(client: AnalysisAPIClient) {
@@ -70,6 +70,14 @@ actor RemoteAnalysisService: AnalysisService {
                 sha256: result.sha256,
                 byteCount: result.byteCount
             )
+        } catch {
+            throw map(error)
+        }
+    }
+
+    func downloadPackage(result: AnalysisResultDescriptor) async throws -> Data {
+        do {
+            return try await client.downloadContent(relativePath: result.packageName)
         } catch {
             throw map(error)
         }

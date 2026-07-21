@@ -81,6 +81,33 @@ nonisolated struct AnalysisAPIClient: Sendable {
         return result
     }
 
+    func downloadContent(relativePath: String) async throws -> Data {
+        let url = try contentURL(relativePath: relativePath)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(configuration.bearerToken)", forHTTPHeaderField: "Authorization")
+        if let pairingToken = configuration.pairingToken {
+            request.setValue(pairingToken, forHTTPHeaderField: "X-Stage-Lab-Pairing-Token")
+        }
+
+        do {
+            let (data, response) = try await transport.send(request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw AnalysisAPIError.invalidResponse
+            }
+            guard httpResponse.statusCode == 200 else {
+                throw AnalysisAPIError.backend(status: httpResponse.statusCode, code: "content_download_failed", message: "content download failed")
+            }
+            return data
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as AnalysisAPIError {
+            throw error
+        } catch {
+            throw AnalysisAPIError.transport
+        }
+    }
+
     func contentURL(relativePath: String) throws -> URL {
         let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard
@@ -162,11 +189,11 @@ nonisolated struct AnalysisAPIClient: Sendable {
     }
 }
 
-private struct SelectTargetDTO: Encodable {
+nonisolated private struct SelectTargetDTO: Encodable {
     let candidateId: String
 }
 
-private struct APIErrorEnvelope: Decodable {
+nonisolated private struct APIErrorEnvelope: Decodable {
     struct Detail: Decodable {
         let code: String
         let message: String

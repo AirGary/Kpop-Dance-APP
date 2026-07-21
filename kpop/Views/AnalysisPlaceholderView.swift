@@ -4,6 +4,7 @@ struct AnalysisView: View {
     @EnvironmentObject private var router: AppRouter
     @Environment(\.jobsAPIClient) private var jobsAPIClient
     @Environment(\.analysisService) private var analysisService
+    @Environment(\.analysisPackageDownloader) private var analysisPackageDownloader
     @Environment(\.uploadRunner) private var uploadRunner
     @State private var connectionModel = AnalysisConnectionModel()
     @State private var uploadModel = UploadConnectionModel()
@@ -121,7 +122,11 @@ struct AnalysisView: View {
                 project.remoteJobId != nil,
                 realAnalysisModel == nil
             else { return }
-            let model = RealAnalysisModel(service: analysisService)
+            let model = RealAnalysisModel(
+                service: analysisService,
+                packageDownloader: analysisPackageDownloader,
+                packageStore: try? AnalysisPackageStore.applicationSupport()
+            )
             realAnalysisModel = model
             await model.start(project: project)
         }

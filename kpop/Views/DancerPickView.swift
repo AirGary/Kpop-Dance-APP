@@ -4,6 +4,7 @@ struct DancerPickView: View {
     @EnvironmentObject private var router: AppRouter
     @Environment(\.analysisService) private var analysisService
     @Environment(\.analysisAPIClient) private var analysisAPIClient
+    @Environment(\.analysisPackageDownloader) private var analysisPackageDownloader
     let project: DanceProject
     @State private var selectedDancer: DancerOption?
     @State private var selectedCandidateID: String?
@@ -103,7 +104,11 @@ struct DancerPickView: View {
                 project.remoteJobId != nil,
                 realAnalysisModel == nil
             else { return }
-            let model = RealAnalysisModel(service: analysisService)
+            let model = RealAnalysisModel(
+                service: analysisService,
+                packageDownloader: analysisPackageDownloader,
+                packageStore: try? AnalysisPackageStore.applicationSupport()
+            )
             realAnalysisModel = model
             await model.start(project: project)
         }

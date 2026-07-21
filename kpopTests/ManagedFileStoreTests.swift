@@ -65,7 +65,7 @@ struct ManagedFileStoreTests {
 
         let firstRecord = try store.save(firstData, projectID: projectID, version: 1)
 
-        #expect(firstRecord.relativePath.value == "AnalysisPackages/\(projectID.uuidString)/result-v1.bin")
+        #expect(firstRecord.relativePath.value == "AnalysisPackages/\(projectID.uuidString)/result-v1.zip")
         #expect(firstRecord.schemaVersion == 1)
         #expect(firstRecord.byteCount == firstData.count)
         #expect(firstRecord.sha256 == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")

@@ -10,19 +10,39 @@ struct AnalysisPackageRecord: Codable, Equatable, Sendable {
 
 enum AnalysisPackageStoreError: Error, Equatable {
     case integrityMismatch
+    case metadataMismatch
 }
 
 struct AnalysisPackageStore {
     let rootDirectory: URL
 
+    static func applicationSupport(fileManager: FileManager = .default) throws -> AnalysisPackageStore {
+        let root = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return AnalysisPackageStore(rootDirectory: root)
+    }
+
     func save(
         _ data: Data,
         projectID: UUID,
         version: Int,
+        expectedSHA256: String? = nil,
+        expectedByteCount: Int? = nil,
         fileManager: FileManager = .default
     ) throws -> AnalysisPackageRecord {
+        let digest = Self.sha256(of: data)
+        if let expectedSHA256, expectedSHA256 != digest {
+            throw AnalysisPackageStoreError.metadataMismatch
+        }
+        if let expectedByteCount, expectedByteCount != data.count {
+            throw AnalysisPackageStoreError.metadataMismatch
+        }
         let relativePath = try ManagedFilePath(
-            "AnalysisPackages/\(projectID.uuidString)/result-v\(version).bin"
+            "AnalysisPackages/\(projectID.uuidString)/result-v\(version).zip"
         )
         let destinationURL = try relativePath.resolve(inside: rootDirectory)
         let directory = destinationURL.deletingLastPathComponent()
@@ -45,7 +65,7 @@ struct AnalysisPackageStore {
         return AnalysisPackageRecord(
             relativePath: relativePath,
             schemaVersion: version,
-            sha256: Self.sha256(of: data),
+            sha256: digest,
             byteCount: data.count
         )
     }
@@ -57,6 +77,21 @@ struct AnalysisPackageStore {
             throw AnalysisPackageStoreError.integrityMismatch
         }
         return data
+    }
+
+    func loadPackage(
+        relativePath: String,
+        schemaVersion: Int,
+        sha256: String,
+        byteCount: Int64
+    ) throws -> AnalysisPackage {
+        let record = AnalysisPackageRecord(
+            relativePath: try ManagedFilePath(relativePath),
+            schemaVersion: schemaVersion,
+            sha256: sha256,
+            byteCount: Int(byteCount)
+        )
+        return try AnalysisPackage.decode(load(record))
     }
 
     func delete(_ relativePath: ManagedFilePath, fileManager: FileManager = .default) throws {

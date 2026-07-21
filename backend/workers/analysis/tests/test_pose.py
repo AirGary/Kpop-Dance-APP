@@ -40,3 +40,10 @@ def test_low_confidence_frames_do_not_create_strong_spotlight():
 
     assert isinstance(track[0], SpotlightKeyframe)
     assert track[1].confidence < 0.5
+
+
+def test_pose_keypoints_can_be_clamped_at_frame_edges():
+    clamped = PoseKeypoint("wrist", 0.0, 1.0, 1.0)
+
+    assert clamped.x == 0.0
+    assert clamped.y == 1.0
