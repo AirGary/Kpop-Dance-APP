@@ -16,11 +16,20 @@ enum RealAnalysisState: Equatable {
 @Observable
 final class RealAnalysisModel {
     private let service: any AnalysisService
+    private let packageDownloader: (any AnalysisPackageDownloader)?
+    private let packageStore: AnalysisPackageStore?
     private let pollIntervalNanoseconds: UInt64
     private(set) var state: RealAnalysisState = .idle
 
-    init(service: any AnalysisService, pollIntervalNanoseconds: UInt64 = 500_000_000) {
+    init(
+        service: any AnalysisService,
+        packageDownloader: (any AnalysisPackageDownloader)? = nil,
+        packageStore: AnalysisPackageStore? = nil,
+        pollIntervalNanoseconds: UInt64 = 500_000_000
+    ) {
         self.service = service
+        self.packageDownloader = packageDownloader
+        self.packageStore = packageStore
         self.pollIntervalNanoseconds = pollIntervalNanoseconds
     }
 
@@ -82,10 +91,11 @@ final class RealAnalysisModel {
                     try await pause()
                 case .resultReady, .completed:
                     let result = try await service.result(jobID: jobID)
+                    let localRecord = try await importPackageIfConfigured(result: result, project: project)
                     project.analysisSchemaVersion = result.schemaVersion
-                    project.analysisPackageRelativePath = result.packageName
-                    project.analysisPackageSHA256 = result.sha256
-                    project.analysisPackageByteCount = result.byteCount
+                    project.analysisPackageRelativePath = localRecord?.relativePath.value ?? result.packageName
+                    project.analysisPackageSHA256 = localRecord?.sha256 ?? result.sha256
+                    project.analysisPackageByteCount = localRecord.map { Int64($0.byteCount) } ?? result.byteCount
                     project.phase = .readyToPractice
                     project.updatedAt = Date()
                     state = .resultReady(result)
@@ -102,11 +112,30 @@ final class RealAnalysisModel {
             } catch let error as AnalysisServiceError {
                 state = .failed(Self.message(for: error), recoverable: true)
                 return
+            } catch is AnalysisPackageStoreError {
+                state = .failed("分析结果校验失败，请重试。", recoverable: true)
+                return
             } catch {
-                state = .failed("无法读取真实分析状态，请重试。", recoverable: true)
+                state = .failed("无法保存真实分析结果，请重试。", recoverable: true)
                 return
             }
         }
+    }
+
+    private func importPackageIfConfigured(
+        result: AnalysisResultDescriptor,
+        project: DanceProject
+    ) async throws -> AnalysisPackageRecord? {
+        guard let packageDownloader, let packageStore else { return nil }
+        let data = try await packageDownloader.downloadPackage(result: result)
+        _ = try AnalysisPackage.decode(data)
+        return try packageStore.save(
+            data,
+            projectID: project.id,
+            version: result.schemaVersion,
+            expectedSHA256: result.sha256,
+            expectedByteCount: result.byteCount.map(Int.init)
+        )
     }
 
     private func pause() async throws {

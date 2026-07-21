@@ -15,6 +15,7 @@ struct kpopApp: App {
     private let uploadRunner: UploadRunner?
     private let analysisAPIClient: AnalysisAPIClient?
     private let analysisService: (any AnalysisService)?
+    private let analysisPackageDownloader: (any AnalysisPackageDownloader)?
 
     init() {
         do {
@@ -46,7 +47,9 @@ struct kpopApp: App {
         jobsAPIClient = JobsAPIClient(configuration: configuration)
         let configuredAnalysisClient = AnalysisAPIClient(configuration: configuration)
         analysisAPIClient = configuredAnalysisClient
-        analysisService = RemoteAnalysisService(client: configuredAnalysisClient)
+        let configuredAnalysisService = RemoteAnalysisService(client: configuredAnalysisClient)
+        analysisService = configuredAnalysisService
+        analysisPackageDownloader = configuredAnalysisService
         uploadRunner = try? UploadRunner(
             coordinator: ResumableUploadCoordinator.live(configuration: configuration)
         )
@@ -55,6 +58,7 @@ struct kpopApp: App {
         uploadRunner = nil
         analysisAPIClient = nil
         analysisService = nil
+        analysisPackageDownloader = nil
         #endif
     }
 
@@ -65,6 +69,7 @@ struct kpopApp: App {
                 .environment(\.uploadRunner, uploadRunner)
                 .environment(\.analysisAPIClient, analysisAPIClient)
                 .environment(\.analysisService, analysisService)
+                .environment(\.analysisPackageDownloader, analysisPackageDownloader)
         }
         .modelContainer(modelContainer)
     }

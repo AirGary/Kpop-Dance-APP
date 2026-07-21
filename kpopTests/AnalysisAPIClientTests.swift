@@ -68,6 +68,21 @@ struct AnalysisAPIClientTests {
     }
 
     @Test
+    func downloadsPrivateResultContentWithAuthHeaders() async throws {
+        let transport = HTTPTransport { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.url?.path == "/analysis/result-v1.zip")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dev-user-a")
+            return (Data([0x50, 0x4b, 0x03, 0x04]), self.response(status: 200, request: request))
+        }
+        let client = AnalysisAPIClient(configuration: configuration(), transport: transport)
+
+        let data = try await client.downloadContent(relativePath: "analysis/result-v1.zip")
+
+        #expect(data == Data([0x50, 0x4b, 0x03, 0x04]))
+    }
+
+    @Test
     func candidateImagePathCannotEscapeConfiguredOrigin() throws {
         let client = AnalysisAPIClient(configuration: configuration())
 

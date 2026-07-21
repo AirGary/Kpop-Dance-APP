@@ -35,6 +35,7 @@ def test_package_contains_exact_members_and_validates_hashes(tmp_path):
             "spotlight-track.json",
             "timeline.json",
         ]
+        assert all(info.compress_type == zipfile.ZIP_STORED for info in archive.infolist())
 
 
 def test_package_json_is_deterministic_and_rejects_path_traversal(tmp_path):

@@ -57,10 +57,12 @@ def write_analysis_package(destination: Path, inputs: PackageInputs) -> PackageA
     Path(temporary_name).unlink(missing_ok=True)
     temporary = Path(temporary_name)
     try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        # Keep the tiny JSON package uncompressed so the iOS client can parse it
+        # without shipping a third-party ZIP/DEFLATE dependency.
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_STORED) as archive:
             for name in REQUIRED_MEMBERS:
                 info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-                info.compress_type = zipfile.ZIP_DEFLATED
+                info.compress_type = zipfile.ZIP_STORED
                 archive.writestr(info, _json_bytes(payloads[name]))
         temporary.replace(destination)
     finally:

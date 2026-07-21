@@ -113,14 +113,20 @@ class RTMPoseEstimator:
         keypoints = tuple(
             PoseKeypoint(
                 _KEYPOINT_NAMES[index] if index < len(_KEYPOINT_NAMES) else f"joint-{index}",
-                float(point[0]) / width,
-                float(point[1]) / height,
-                float(scores[index]),
+                _clamp_normalized(float(point[0]) / width),
+                _clamp_normalized(float(point[1]) / height),
+                _clamp_normalized(float(scores[index])),
             )
             for index, point in enumerate(points)
         )
         confidence = sum(point.confidence for point in keypoints) / max(1, len(keypoints))
         return PoseFrame(time_seconds, box, keypoints, confidence)
+
+
+def _clamp_normalized(value: float) -> float:
+    if not math.isfinite(value):
+        raise ValueError("pose keypoint values must be finite")
+    return min(1.0, max(0.0, value))
 
 
 def _is_mps_failure(error: Exception) -> bool:

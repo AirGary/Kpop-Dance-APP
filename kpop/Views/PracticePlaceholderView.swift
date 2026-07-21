@@ -11,6 +11,8 @@ struct PracticeView: View {
     @State private var timeObserverToken: Any?
     @State private var currentTime: TimeInterval = 0
     @State private var loopEnabled = false
+    @State private var analysisPackage: AnalysisPackage?
+    @State private var showSkeleton = true
 
     var body: some View {
         ScrollView {
@@ -32,6 +34,8 @@ struct PracticeView: View {
                             isMirrored: project.mirrorEnabled,
                             isPlaying: isPlaying,
                             playbackRateTitle: project.playbackRate.title,
+                            analysisPackage: analysisPackage,
+                            showSkeleton: showSkeleton,
                             onTogglePlayback: togglePlayback
                         )
                     } else {
@@ -106,6 +110,13 @@ struct PracticeView: View {
                             isOn: $loopEnabled
                         )
                         .disabled(player == nil)
+
+                        ToggleCard(
+                            title: "目标骨架",
+                            detail: "显示 AI 识别的身体关键点",
+                            systemImage: "figure.stand",
+                            isOn: $showSkeleton
+                        )
                     }
 
                     HStack(spacing: 10) {
@@ -161,6 +172,7 @@ struct PracticeView: View {
         .background(AppUI.background)
         .onAppear {
             preparePlayer()
+            loadAnalysisPackage()
             if project.phase == .readyToPractice {
                 project.phase = .practicing
                 touch()
@@ -168,6 +180,9 @@ struct PracticeView: View {
         }
         .onDisappear {
             cleanupPlayer()
+        }
+        .task(id: project.analysisPackageRelativePath) {
+            loadAnalysisPackage()
         }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
             guard
@@ -200,7 +215,43 @@ struct PracticeView: View {
     }
 
     private var visibleTimelineNodes: [DanceTimelineNode] {
-        DanceProject.sampleTimelineNodes.filter { $0.time <= safeDuration }
+        let nodes = analysisPackage?.timeline.map { segment in
+            DanceTimelineNode(
+                time: segment.startSeconds,
+                kind: .keyAction,
+                label: segment.reasons.first?.label ?? difficultyTitle(segment.difficulty),
+                isHard: segment.difficulty == .hard
+            )
+        } ?? DanceProject.sampleTimelineNodes
+        return nodes.filter { $0.time <= safeDuration }
+    }
+
+    private func difficultyTitle(_ difficulty: AnalysisDifficulty) -> String {
+        switch difficulty {
+        case .easy: "基础动作"
+        case .medium: "组合动作"
+        case .hard: "高难动作"
+        }
+    }
+
+    private func loadAnalysisPackage() {
+        guard
+            let path = project.analysisPackageRelativePath,
+            let sha256 = project.analysisPackageSHA256,
+            let byteCount = project.analysisPackageByteCount,
+            let schemaVersion = project.analysisSchemaVersion,
+            let store = try? AnalysisPackageStore.applicationSupport()
+        else {
+            analysisPackage = nil
+            return
+        }
+
+        analysisPackage = try? store.loadPackage(
+            relativePath: path,
+            schemaVersion: schemaVersion,
+            sha256: sha256,
+            byteCount: byteCount
+        )
     }
 
     private var mirrorBinding: Binding<Bool> {
@@ -366,11 +417,23 @@ private struct PracticeStageView: View {
     let isMirrored: Bool
     let isPlaying: Bool
     let playbackRateTitle: String
+    let analysisPackage: AnalysisPackage?
+    let showSkeleton: Bool
     let onTogglePlayback: () -> Void
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             PracticePlayerView(player: player, isMirrored: isMirrored)
+
+            if let analysisPackage {
+                PracticeAnalysisOverlay(
+                    package: analysisPackage,
+                    currentTime: currentTime,
+                    showSkeleton: showSkeleton,
+                    isMirrored: isMirrored
+                )
+                .padding(1)
+            }
 
             LinearGradient(
                 colors: [.black.opacity(0.55), .clear, .black.opacity(0.72)],
@@ -433,6 +496,53 @@ private struct PracticeStageView: View {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+private struct PracticeAnalysisOverlay: View {
+    let package: AnalysisPackage
+    let currentTime: TimeInterval
+    let showSkeleton: Bool
+    let isMirrored: Bool
+
+    var body: some View {
+        GeometryReader { _ in
+            Canvas { context, size in
+                if let spotlight = nearestSpotlight {
+                    let rect = CGRect(
+                        x: spotlight.x * size.width,
+                        y: spotlight.y * size.height,
+                        width: spotlight.width * size.width,
+                        height: spotlight.height * size.height
+                    )
+                    context.stroke(Path(roundedRect: rect, cornerRadius: 12), with: .color(.yellow), lineWidth: 3)
+                }
+
+                guard showSkeleton, let frame = nearestPose else { return }
+                let points = frame.keypoints.map { keypoint in
+                    CGPoint(x: keypoint.x * size.width, y: keypoint.y * size.height)
+                }
+                for point in points {
+                    context.fill(Path(ellipseIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)), with: .color(.cyan))
+                }
+                for pair in zip(points, points.dropFirst()) {
+                    var path = Path()
+                    path.move(to: pair.0)
+                    path.addLine(to: pair.1)
+                    context.stroke(path, with: .color(.cyan.opacity(0.72)), lineWidth: 2)
+                }
+            }
+            .scaleEffect(x: isMirrored ? -1 : 1, y: 1)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var nearestSpotlight: AnalysisSpotlightKeyframe? {
+        package.spotlightTrack.min { abs($0.timeSeconds - currentTime) < abs($1.timeSeconds - currentTime) }
+    }
+
+    private var nearestPose: AnalysisPoseFrame? {
+        package.poseTrack.min { abs($0.timeSeconds - currentTime) < abs($1.timeSeconds - currentTime) }
     }
 }
 
