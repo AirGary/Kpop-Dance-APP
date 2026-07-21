@@ -71,8 +71,12 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
         object_storage_root=tmp_path,
         local_ai_model_root=model_root,
         local_ai_frame_stride=int(os.environ.get("LOCAL_AI_FRAME_STRIDE", "6")),
+        pairing_token="smoke-pairing-token",
     )
-    headers = {"Authorization": "Bearer dev-user-a"}
+    headers = {
+        "Authorization": "Bearer dev-user-a",
+        "X-Stage-Lab-Pairing-Token": "smoke-pairing-token",
+    }
 
     with TestClient(create_app(settings=settings)) as client:
         job_id = _upload(client, path, headers)

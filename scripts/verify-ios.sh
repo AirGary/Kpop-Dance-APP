@@ -4,6 +4,7 @@ set -euo pipefail
 readonly project="kpop.xcodeproj"
 readonly destination="${IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17}"
 
+printf '%s\n' '== Stage 6 iOS unit/UI gate =='
 xcodebuild \
   -project "$project" \
   -scheme kpop \

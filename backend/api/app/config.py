@@ -15,6 +15,7 @@ class Settings(BaseModel):
     result_bucket_name: str | None = None
     local_ai_model_root: Path | None = None
     local_ai_frame_stride: int = Field(default=6, gt=0, le=30)
+    pairing_token: str | None = None
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -31,4 +32,5 @@ class Settings(BaseModel):
             result_bucket_name=os.environ.get("RESULT_BUCKET_NAME"),
             local_ai_model_root=(Path(os.environ["LOCAL_AI_MODEL_ROOT"]) if os.environ.get("LOCAL_AI_MODEL_ROOT") else None),
             local_ai_frame_stride=int(os.environ.get("LOCAL_AI_FRAME_STRIDE", "6")),
+            pairing_token=os.environ.get("STAGE_LAB_PAIRING_TOKEN"),
         )
