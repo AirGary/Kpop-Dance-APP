@@ -47,6 +47,18 @@ struct PortraitFollowGeometryTests {
     }
 
     @Test
+    func outOfRangeSpotlightFramesDoNotInterpolateOrTrack() {
+        let track = [
+            AnalysisSpotlightKeyframe(timeSeconds: 0, x: 0.10, y: 0.10, width: 0.18, height: 0.70, confidence: 0.9),
+            AnalysisSpotlightKeyframe(timeSeconds: 1, x: 0.92, y: 0.10, width: 0.18, height: 0.70, confidence: 0.9),
+            AnalysisSpotlightKeyframe(timeSeconds: 2, x: 0.50, y: 0.10, width: 0.18, height: 0.70, confidence: 0.9)
+        ]
+
+        #expect(PortraitFollowPlan.make(track: track, at: 1) == .fullSource)
+        #expect(PortraitFollowPlan.make(track: track, at: 1.5) == .fullSource)
+    }
+
+    @Test
     func projectionMapsSourceRectIntoActiveCropCoordinates() throws {
         let crop = try #require(
             PortraitFollowPlan.make(
@@ -77,5 +89,19 @@ struct PortraitFollowGeometryTests {
         )
 
         #expect(projected == CGRect(x: 0.2, y: 0.1, width: 0.2, height: 0.7))
+    }
+
+    @Test
+    func projectionRejectsNonPositiveSourceRectangles() {
+        let crop = NormalizedRect(minX: 0, minY: 0, width: 0.5, height: 1)
+
+        #expect(PortraitFollowProjection.project(
+            NormalizedRect(minX: 0.2, minY: 0.2, width: 0, height: 0.2),
+            in: .tracking(crop)
+        ) == nil)
+        #expect(PortraitFollowProjection.project(
+            NormalizedRect(minX: 0.2, minY: 0.2, width: -0.1, height: 0.2),
+            in: .fullSource
+        ) == nil)
     }
 }

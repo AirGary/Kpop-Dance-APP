@@ -54,11 +54,11 @@ nonisolated enum PortraitFollowPlan {
         guard let first = valid.first else { return nil }
 
         guard time >= first.timeSeconds else {
-            return time >= first.timeSeconds - maximumGapSeconds ? first : nil
+            return time >= first.timeSeconds - maximumGapSeconds && isNormalized(first) ? first : nil
         }
         guard let last = valid.last else { return nil }
         guard time <= last.timeSeconds else {
-            return time <= last.timeSeconds + maximumGapSeconds ? last : nil
+            return time <= last.timeSeconds + maximumGapSeconds && isNormalized(last) ? last : nil
         }
 
         guard let upperIndex = valid.firstIndex(where: { $0.timeSeconds >= time }) else {
@@ -66,11 +66,13 @@ nonisolated enum PortraitFollowPlan {
         }
         let upper = valid[upperIndex]
         guard upper.timeSeconds != time, upperIndex > valid.startIndex else {
-            return upper
+            return isNormalized(upper) ? upper : nil
         }
         let lower = valid[valid.index(before: upperIndex)]
         guard time - lower.timeSeconds <= maximumGapSeconds,
-              upper.timeSeconds - time <= maximumGapSeconds else {
+              upper.timeSeconds - time <= maximumGapSeconds,
+              isNormalized(lower),
+              isNormalized(upper) else {
             return nil
         }
         let progress = (time - lower.timeSeconds) / (upper.timeSeconds - lower.timeSeconds)
@@ -129,6 +131,12 @@ nonisolated enum PortraitFollowPlan {
         ].allSatisfy(\.isFinite) && keyframe.width > 0 && keyframe.height > 0
     }
 
+    private static func isNormalized(_ keyframe: AnalysisSpotlightKeyframe) -> Bool {
+        keyframe.x >= 0 && keyframe.y >= 0
+            && keyframe.x + keyframe.width <= 1
+            && keyframe.y + keyframe.height <= 1
+    }
+
     private static func interpolate(_ lower: Double, _ upper: Double, _ progress: Double) -> Double {
         lower + (upper - lower) * progress
     }
@@ -176,5 +184,6 @@ nonisolated enum PortraitFollowProjection {
 
     private static func isValid(_ rect: NormalizedRect) -> Bool {
         [rect.minX, rect.minY, rect.width, rect.height, rect.maxX, rect.maxY].allSatisfy(\.isFinite)
+            && rect.width > 0 && rect.height > 0
     }
 }
