@@ -48,27 +48,27 @@ nonisolated enum PortraitFollowPlan {
         at time: Double
     ) -> AnalysisSpotlightKeyframe? {
         guard time.isFinite else { return nil }
-        let valid = track
-            .filter(isValid)
+        let keyframes = track
+            .filter { $0.timeSeconds.isFinite }
             .sorted { $0.timeSeconds < $1.timeSeconds }
-        guard let first = valid.first else { return nil }
+        guard let first = keyframes.first else { return nil }
 
         guard time >= first.timeSeconds else {
             return time >= first.timeSeconds - maximumGapSeconds && isNormalized(first) ? first : nil
         }
-        guard let last = valid.last else { return nil }
+        guard let last = keyframes.last else { return nil }
         guard time <= last.timeSeconds else {
             return time <= last.timeSeconds + maximumGapSeconds && isNormalized(last) ? last : nil
         }
 
-        guard let upperIndex = valid.firstIndex(where: { $0.timeSeconds >= time }) else {
+        guard let upperIndex = keyframes.firstIndex(where: { $0.timeSeconds >= time }) else {
             return last
         }
-        let upper = valid[upperIndex]
-        guard upper.timeSeconds != time, upperIndex > valid.startIndex else {
+        let upper = keyframes[upperIndex]
+        guard upper.timeSeconds != time, upperIndex > keyframes.startIndex else {
             return isNormalized(upper) ? upper : nil
         }
-        let lower = valid[valid.index(before: upperIndex)]
+        let lower = keyframes[keyframes.index(before: upperIndex)]
         guard time - lower.timeSeconds <= maximumGapSeconds,
               upper.timeSeconds - time <= maximumGapSeconds,
               isNormalized(lower),
