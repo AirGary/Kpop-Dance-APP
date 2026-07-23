@@ -132,7 +132,8 @@ nonisolated enum PortraitFollowPlan {
     }
 
     private static func isNormalized(_ keyframe: AnalysisSpotlightKeyframe) -> Bool {
-        keyframe.x >= 0 && keyframe.y >= 0
+        isValid(keyframe)
+            && keyframe.x >= 0 && keyframe.y >= 0
             && keyframe.x + keyframe.width <= 1
             && keyframe.y + keyframe.height <= 1
     }

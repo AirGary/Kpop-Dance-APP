@@ -47,6 +47,19 @@ struct PortraitFollowGeometryTests {
     }
 
     @Test
+    func invalidKeyframeBlocksTheEntireBoundedInterpolationInterval() {
+        let track = [
+            AnalysisSpotlightKeyframe(timeSeconds: 0, x: 0.10, y: 0.10, width: 0.18, height: 0.70, confidence: 0.9),
+            AnalysisSpotlightKeyframe(timeSeconds: 1, x: 0.30, y: 0.10, width: 0, height: 0.70, confidence: 0.9),
+            AnalysisSpotlightKeyframe(timeSeconds: 2, x: 0.50, y: 0.10, width: 0.18, height: 0.70, confidence: 0.9)
+        ]
+
+        #expect(PortraitFollowPlan.make(track: track, at: 0.5) == .fullSource)
+        #expect(PortraitFollowPlan.make(track: track, at: 1) == .fullSource)
+        #expect(PortraitFollowPlan.make(track: track, at: 1.5) == .fullSource)
+    }
+
+    @Test
     func lowConfidenceInvalidAndDistantFramesFallBackToFullSource() {
         let lowConfidence = [AnalysisSpotlightKeyframe(timeSeconds: 0, x: 0.1, y: 0.1, width: 0.2, height: 0.7, confidence: 0.54)]
         let invalid = [AnalysisSpotlightKeyframe(timeSeconds: 0, x: .nan, y: 0.1, width: 0.2, height: 0.7, confidence: 1)]
