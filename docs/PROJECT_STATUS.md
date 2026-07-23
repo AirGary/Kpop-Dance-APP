@@ -124,6 +124,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-21 逻辑复查修补：目标舞者一旦选定后禁止切换到另一候选，分析内容路径限制在 Job 的 `analysis/` 目录，iOS 候选页在可恢复失败时显示错误与重试按钮；后端回归 `209 passed, 1 skipped`，iOS Debug Simulator 构建和新增状态测试通过。该修补未修改用户已有 Xcode 工程改动。
 - 2026-07-23 代码复查修补：发现 API 返回的稳定内容路径带有 `analysis/` 前缀，但服务端又将它附加到 `analysis/` 目录，导致候选图与结果包被错误解析为 `analysis/analysis/...` 并返回 404。现已把公开内容路径明确为 `analysis/<file>`，服务端仅在验证此前缀后定位到 Job 私有分析目录；新增合法结果包路径与越界路径回归测试。后端完整门禁为 `210 passed, 1 skipped`。
 - 2026-07-23：用户确认开始竖屏全身跟随练习页实现。范围仅为 iPhone 17 Pro Max（iOS 26.5）的 iOS 播放渲染：消费既有全身姿态和聚光轨迹，生成 9:16 全身优先裁切，轨迹不可靠时回退完整画面。不会修改模型、Analysis Package schema、后端 API、云资源或 iOS 27 适配。规格为 `docs/superpowers/specs/2026-07-23-portrait-follow-camera-design.md`，实施计划为 `docs/superpowers/plans/2026-07-23-portrait-follow-camera.md`。
+- 2026-07-23：竖屏跟随 Task 1 已完成并通过独立代码审查。iOS 26.5 聚焦测试验证 9:16 裁切、全身关键点保留、低置信度/无效/越界/负尺寸轨迹回退，以及异常关键帧不可跨越插值。提交范围仅为纯 Swift 几何与测试；Task 2 开始实现 AVFoundation 真实视频合成。
 
 ## 最近完成任务
 
