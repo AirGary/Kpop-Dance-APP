@@ -20,6 +20,12 @@ struct AnalysisPackageTests {
         #expect(package.manifest.schemaVersion == 1)
         #expect(package.manifest.candidateID == "candidate-1")
         #expect(package.poseTrack.count == 1)
+        #expect(package.poseTrack.allSatisfy { frame in
+            frame.keypoints.contains(where: { $0.name == "left_wrist" })
+                && frame.keypoints.contains(where: { $0.name == "right_wrist" })
+                && frame.keypoints.contains(where: { $0.name == "left_ankle" })
+                && frame.keypoints.contains(where: { $0.name == "right_ankle" })
+        })
         #expect(package.spotlightTrack[0].confidence == 0.9)
         #expect(package.timeline[0].difficulty == .hard)
         #expect(package.timeline[0].repeatGroupID == "repeat-1")
@@ -62,7 +68,7 @@ struct AnalysisPackageTests {
 
     private func fixtureEntries() -> [String: Data] {
         let confidence = Data(#"[{"startSeconds":0,"endSeconds":1,"confidence":0.9}]"#.utf8)
-        let pose = Data(#"[{"timeSeconds":0,"confidence":0.9,"keypoints":[{"name":"nose","x":0.5,"y":0.2,"confidence":0.9}]}]"#.utf8)
+        let pose = Data(#"[{"timeSeconds":0,"confidence":0.9,"keypoints":[{"name":"left_wrist","x":0.35,"y":0.4,"confidence":0.9},{"name":"right_wrist","x":0.65,"y":0.4,"confidence":0.9},{"name":"left_ankle","x":0.4,"y":0.9,"confidence":0.9},{"name":"right_ankle","x":0.6,"y":0.9,"confidence":0.9}]}]"#.utf8)
         let spotlight = Data(#"[{"timeSeconds":0,"x":0.2,"y":0.1,"width":0.3,"height":0.7,"confidence":0.9}]"#.utf8)
         let timeline = Data(#"[{"startSeconds":0,"endSeconds":1,"difficulty":"hard","repeatGroupId":"repeat-1","reasons":[{"code":"speed","label":"快速动作"}]}]"#.utf8)
         let hashes = [
