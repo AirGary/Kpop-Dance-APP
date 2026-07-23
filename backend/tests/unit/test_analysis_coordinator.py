@@ -160,7 +160,7 @@ async def test_target_selection_cannot_switch_candidate_after_first_selection(tm
 
 
 @pytest.mark.asyncio
-async def test_content_path_cannot_escape_analysis_directory(tmp_path):
+async def test_content_path_resolves_contract_path_inside_analysis_directory(tmp_path):
     jobs = FileJobRepository(tmp_path)
     response = job()
     await jobs.create(JobRecord("dev-user-a", "upload", "hash", response))
@@ -173,7 +173,28 @@ async def test_content_path_cannot_escape_analysis_directory(tmp_path):
         FakeRunner(),
     )
 
-    resolved = coordinator.result_content_path("dev-user-a", JOB_ID, "source.mp4")
+    resolved = coordinator.result_content_path("dev-user-a", JOB_ID, "analysis/result-v1.zip")
 
-    assert resolved == tmp_path / "dev-user-a" / str(JOB_ID) / "analysis" / "source.mp4"
+    assert resolved == tmp_path / "dev-user-a" / str(JOB_ID) / "analysis" / "result-v1.zip"
+    await coordinator.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_content_path_rejects_files_outside_the_analysis_contract(tmp_path):
+    jobs = FileJobRepository(tmp_path)
+    response = job()
+    await jobs.create(JobRecord("dev-user-a", "upload", "hash", response))
+    repository = FileAnalysisRepository(tmp_path)
+    await repository.update("dev-user-a", JOB_ID, response)
+    coordinator = AnalysisCoordinator(
+        JobService(jobs, LocalObjectStore(tmp_path)),
+        repository,
+        LocalAnalysisWorkspace(tmp_path),
+        FakeRunner(),
+    )
+
+    with pytest.raises(APIError) as error:
+        coordinator.result_content_path("dev-user-a", JOB_ID, "source.mp4")
+
+    assert error.value.status_code == 404
     await coordinator.shutdown()

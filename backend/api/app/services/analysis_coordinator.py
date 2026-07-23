@@ -89,10 +89,15 @@ class AnalysisCoordinator:
         from pathlib import PurePosixPath
 
         candidate = PurePosixPath(relative_path)
-        if candidate.is_absolute() or any(part in {"", ".", ".."} for part in candidate.parts):
+        if (
+            candidate.is_absolute()
+            or len(candidate.parts) < 2
+            or candidate.parts[0] != "analysis"
+            or any(part in {"", ".", ".."} for part in candidate.parts)
+        ):
             raise APIError(404, "result_not_found", "Analysis result was not found.")
         analysis_directory = self._workspace.analysis_directory(owner_id, job_id).resolve()
-        path = (analysis_directory / Path(*candidate.parts)).resolve()
+        path = (analysis_directory / Path(*candidate.parts[1:])).resolve()
         if not path.is_relative_to(analysis_directory):
             raise APIError(404, "result_not_found", "Analysis result was not found.")
         return path
