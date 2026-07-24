@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import SwiftUI
 
 struct PracticePlayerView: View {
@@ -6,8 +6,6 @@ struct PracticePlayerView: View {
     let isMirrored: Bool
 
     var body: some View {
-        VideoPlayer(player: player)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .scaleEffect(x: isMirrored ? -1 : 1, y: 1)
+        PortraitFollowPlayerView(player: player, isMirrored: isMirrored)
     }
 }

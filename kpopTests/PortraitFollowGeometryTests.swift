@@ -4,6 +4,63 @@ import Testing
 
 struct PortraitFollowGeometryTests {
     @Test
+    func trackingPresentationShowsFallbackOnlyWhenNoReliableCropExists() {
+        let crop = NormalizedRect(minX: 0.2, minY: 0, width: 0.5625, height: 1)
+
+        #expect(PracticeFollowPresentation(frame: .tracking(crop)).status == .tracking)
+        #expect(PracticeFollowPresentation(frame: .fullSource).status == .fullFrameFallback)
+    }
+
+    @Test
+    func fullSourceOverlayProjectsIntoCenteredAspectFitVideoArea() throws {
+        let canvas = CGSize(width: 900, height: 1600)
+        let source = NormalizedRect(minX: 0, minY: 0, width: 1, height: 1)
+
+        let projected = try #require(PracticeOverlayProjection.project(
+            source,
+            in: .fullSource,
+            sourceAspectRatio: 16.0 / 9.0,
+            canvasSize: canvas
+        ))
+
+        #expect(abs(projected.minX) < 0.001)
+        #expect(abs(projected.width - 900) < 0.001)
+        #expect(abs(projected.height - 506.25) < 0.001)
+        #expect(abs(projected.minY - 546.875) < 0.001)
+    }
+
+    @Test
+    func trackingOverlayProjectsCropCoordinatesAcrossEntirePortraitCanvas() throws {
+        let crop = NormalizedRect(minX: 0.2, minY: 0.1, width: 0.4, height: 0.8)
+        let target = NormalizedRect(minX: 0.3, minY: 0.3, width: 0.2, height: 0.4)
+
+        let projected = try #require(PracticeOverlayProjection.project(
+            target,
+            in: .tracking(crop),
+            sourceAspectRatio: 16.0 / 9.0,
+            canvasSize: CGSize(width: 900, height: 1600)
+        ))
+
+        #expect(abs(projected.minX - 225) < 0.001)
+        #expect(abs(projected.minY - 400) < 0.001)
+        #expect(abs(projected.width - 450) < 0.001)
+        #expect(abs(projected.height - 800) < 0.001)
+    }
+
+    @Test
+    func overlayPointProjectionUsesTheSameTrackingCrop() throws {
+        let projected = try #require(PracticeOverlayProjection.project(
+            CGPoint(x: 0.4, y: 0.5),
+            in: .tracking(NormalizedRect(minX: 0.2, minY: 0.1, width: 0.4, height: 0.8)),
+            sourceAspectRatio: 16.0 / 9.0,
+            canvasSize: CGSize(width: 900, height: 1600)
+        ))
+
+        #expect(abs(projected.x - 450) < 0.001)
+        #expect(abs(projected.y - 800) < 0.001)
+    }
+
+    @Test
     func validTargetProducesBoundedNineBySixteenCropContainingPaddedBody() {
         let frame = PortraitFollowPlan.make(
             track: [AnalysisSpotlightKeyframe(timeSeconds: 2, x: 0.42, y: 0.12, width: 0.18, height: 0.72, confidence: 0.94)],

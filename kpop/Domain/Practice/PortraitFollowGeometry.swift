@@ -29,6 +29,133 @@ nonisolated enum PortraitFollowFrame: Equatable, Sendable {
     }
 }
 
+nonisolated enum PracticeFollowStatus: Equatable, Sendable {
+    case tracking
+    case fullFrameFallback
+    case unavailable
+}
+
+nonisolated struct PracticeFollowPresentation: Equatable, Sendable {
+    let frame: PortraitFollowFrame
+
+    var status: PracticeFollowStatus {
+        switch frame {
+        case .tracking:
+            .tracking
+        case .fullSource:
+            .fullFrameFallback
+        }
+    }
+}
+
+nonisolated enum PracticeOverlayProjection {
+    static func project(
+        _ source: NormalizedRect,
+        in frame: PortraitFollowFrame,
+        sourceAspectRatio: Double,
+        canvasSize: CGSize
+    ) -> CGRect? {
+        guard sourceAspectRatio.isFinite,
+              sourceAspectRatio > 0,
+              canvasSize.width.isFinite,
+              canvasSize.height.isFinite,
+              canvasSize.width > 0,
+              canvasSize.height > 0,
+              let normalized = PortraitFollowProjection.project(source, in: frame) else {
+            return nil
+        }
+
+        let contentRect = contentRect(
+            for: frame,
+            sourceAspectRatio: sourceAspectRatio,
+            canvasSize: canvasSize
+        )
+
+        return CGRect(
+            x: contentRect.minX + normalized.minX * contentRect.width,
+            y: contentRect.minY + normalized.minY * contentRect.height,
+            width: normalized.width * contentRect.width,
+            height: normalized.height * contentRect.height
+        )
+    }
+
+    static func project(
+        _ source: CGPoint,
+        in frame: PortraitFollowFrame,
+        sourceAspectRatio: Double,
+        canvasSize: CGSize
+    ) -> CGPoint? {
+        guard source.x.isFinite,
+              source.y.isFinite,
+              source.x >= 0,
+              source.y >= 0,
+              source.x <= 1,
+              source.y <= 1,
+              sourceAspectRatio.isFinite,
+              sourceAspectRatio > 0,
+              canvasSize.width.isFinite,
+              canvasSize.height.isFinite,
+              canvasSize.width > 0,
+              canvasSize.height > 0 else {
+            return nil
+        }
+
+        let normalized: CGPoint
+        switch frame {
+        case .fullSource:
+            normalized = source
+        case .tracking(let crop):
+            guard crop.width.isFinite,
+                  crop.height.isFinite,
+                  crop.width > 0,
+                  crop.height > 0 else {
+                return nil
+            }
+            normalized = CGPoint(
+                x: (source.x - crop.minX) / crop.width,
+                y: (source.y - crop.minY) / crop.height
+            )
+        }
+        let contentRect = contentRect(
+            for: frame,
+            sourceAspectRatio: sourceAspectRatio,
+            canvasSize: canvasSize
+        )
+        return CGPoint(
+            x: contentRect.minX + normalized.x * contentRect.width,
+            y: contentRect.minY + normalized.y * contentRect.height
+        )
+    }
+
+    private static func contentRect(
+        for frame: PortraitFollowFrame,
+        sourceAspectRatio: Double,
+        canvasSize: CGSize
+    ) -> CGRect {
+        guard case .fullSource = frame else {
+            return CGRect(origin: .zero, size: canvasSize)
+        }
+
+        let canvasAspectRatio = canvasSize.width / canvasSize.height
+        if sourceAspectRatio > canvasAspectRatio {
+            let height = canvasSize.width / sourceAspectRatio
+            return CGRect(
+                x: 0,
+                y: (canvasSize.height - height) / 2,
+                width: canvasSize.width,
+                height: height
+            )
+        }
+        let width = canvasSize.height * sourceAspectRatio
+        return CGRect(
+            x: (canvasSize.width - width) / 2,
+            y: 0,
+            width: width,
+            height: canvasSize.height
+        )
+    }
+}
+
 nonisolated enum PortraitFollowPlan {
     static let targetAspect = 9.0 / 16.0
     static let minimumConfidence = 0.55

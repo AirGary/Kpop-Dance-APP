@@ -13,6 +13,8 @@ struct PracticeView: View {
     @State private var loopEnabled = false
     @State private var analysisPackage: AnalysisPackage?
     @State private var showSkeleton = true
+    @State private var followCompositionAvailable = false
+    @State private var sourceAspectRatio = 16.0 / 9.0
 
     var body: some View {
         ScrollView {
@@ -35,6 +37,9 @@ struct PracticeView: View {
                             isPlaying: isPlaying,
                             playbackRateTitle: project.playbackRate.title,
                             analysisPackage: analysisPackage,
+                            followFrame: activeFollowFrame,
+                            followStatus: activeFollowStatus,
+                            sourceAspectRatio: sourceAspectRatio,
                             showSkeleton: showSkeleton,
                             onTogglePlayback: togglePlayback
                         )
@@ -171,8 +176,6 @@ struct PracticeView: View {
         }
         .background(AppUI.background)
         .onAppear {
-            preparePlayer()
-            loadAnalysisPackage()
             if project.phase == .readyToPractice {
                 project.phase = .practicing
                 touch()
@@ -181,8 +184,9 @@ struct PracticeView: View {
         .onDisappear {
             cleanupPlayer()
         }
-        .task(id: project.analysisPackageRelativePath) {
+        .task(id: playerPreparationID) {
             loadAnalysisPackage()
+            await preparePlayer()
         }
         .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
             guard
@@ -224,6 +228,27 @@ struct PracticeView: View {
             )
         } ?? DanceProject.sampleTimelineNodes
         return nodes.filter { $0.time <= safeDuration }
+    }
+
+    private var playerPreparationID: String {
+        [
+            project.sourceVideoPath ?? "",
+            project.analysisPackageRelativePath ?? "",
+            project.analysisPackageSHA256 ?? ""
+        ].joined(separator: "|")
+    }
+
+    private var activeFollowFrame: PortraitFollowFrame {
+        guard followCompositionAvailable, let analysisPackage else {
+            return .fullSource
+        }
+        return PortraitFollowPlan.make(track: analysisPackage.spotlightTrack, at: currentTime)
+    }
+
+    private var activeFollowStatus: PracticeFollowStatus {
+        guard analysisPackage != nil else { return .unavailable }
+        guard followCompositionAvailable else { return .fullFrameFallback }
+        return PracticeFollowPresentation(frame: activeFollowFrame).status
     }
 
     private func difficultyTitle(_ difficulty: AnalysisDifficulty) -> String {
@@ -283,7 +308,8 @@ struct PracticeView: View {
         }
     }
 
-    private func preparePlayer() {
+    @MainActor
+    private func preparePlayer() async {
         cleanupPlayer()
 
         guard
@@ -292,14 +318,47 @@ struct PracticeView: View {
         else {
             duration = max(project.videoDuration, 1)
             currentTime = 0
+            followCompositionAvailable = false
             return
         }
 
-        let player = AVPlayer(url: URL(fileURLWithPath: path))
-        self.player = player
+        let sourceURL = URL(fileURLWithPath: path)
+        let asset = AVURLAsset(url: sourceURL)
+        let package = analysisPackage
+        let preparedItem: AVPlayerItem
+        var hasFollowComposition = false
+
+        if let package, package.spotlightTrack.isEmpty == false {
+            let orderedTrack = package.spotlightTrack.sorted { $0.timeSeconds < $1.timeSeconds }
+            let frames = orderedTrack.map {
+                PortraitFollowPlan.make(track: orderedTrack, at: $0.timeSeconds)
+            }
+            do {
+                preparedItem = try await PortraitFollowCompositionBuilder.makeItem(
+                    asset: asset,
+                    frames: frames
+                )
+                hasFollowComposition = preparedItem.videoComposition != nil
+            } catch {
+                preparedItem = AVPlayerItem(asset: asset)
+            }
+        } else {
+            preparedItem = AVPlayerItem(asset: asset)
+        }
+
+        guard Task.isCancelled == false else { return }
+
+        if let aspectRatio = await uprightSourceAspectRatio(for: asset) {
+            sourceAspectRatio = aspectRatio
+        }
+        guard Task.isCancelled == false else { return }
+
+        let preparedPlayer = AVPlayer(playerItem: preparedItem)
+        player = preparedPlayer
+        followCompositionAvailable = hasFollowComposition
         duration = max(project.videoDuration, 1)
         currentTime = min(currentTime, safeDuration)
-        addTimeObserver(to: player)
+        addTimeObserver(to: preparedPlayer)
     }
 
     private func cleanupPlayer() {
@@ -310,6 +369,22 @@ struct PracticeView: View {
         player = nil
         timeObserverToken = nil
         isPlaying = false
+        followCompositionAvailable = false
+    }
+
+    private func uprightSourceAspectRatio(for asset: AVAsset) async -> Double? {
+        guard
+            let track = try? await asset.loadTracks(withMediaType: .video).first,
+            let naturalSize = try? await track.load(.naturalSize),
+            let preferredTransform = try? await track.load(.preferredTransform)
+        else {
+            return nil
+        }
+        let uprightBounds = CGRect(origin: .zero, size: naturalSize)
+            .applying(preferredTransform)
+            .standardized
+        guard uprightBounds.width > 0, uprightBounds.height > 0 else { return nil }
+        return uprightBounds.width / uprightBounds.height
     }
 
     private func addTimeObserver(to player: AVPlayer) {
@@ -418,17 +493,22 @@ private struct PracticeStageView: View {
     let isPlaying: Bool
     let playbackRateTitle: String
     let analysisPackage: AnalysisPackage?
+    let followFrame: PortraitFollowFrame
+    let followStatus: PracticeFollowStatus
+    let sourceAspectRatio: Double
     let showSkeleton: Bool
     let onTogglePlayback: () -> Void
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            PracticePlayerView(player: player, isMirrored: isMirrored)
+            PortraitFollowPlayerView(player: player, isMirrored: isMirrored)
 
             if let analysisPackage {
                 PracticeAnalysisOverlay(
                     package: analysisPackage,
                     currentTime: currentTime,
+                    followFrame: followFrame,
+                    sourceAspectRatio: sourceAspectRatio,
                     showSkeleton: showSkeleton,
                     isMirrored: isMirrored
                 )
@@ -443,7 +523,10 @@ private struct PracticeStageView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    StatusBadge(text: playbackRateTitle, systemImage: "speedometer", color: .white)
+                    VStack(alignment: .leading, spacing: 8) {
+                        StatusBadge(text: followStatusTitle, systemImage: followStatusIcon, color: .white)
+                        StatusBadge(text: playbackRateTitle, systemImage: "speedometer", color: .white)
+                    }
                     Spacer()
                     StatusBadge(text: isMirrored ? "镜像中" : "正常方向", systemImage: "rectangle.triangle.2.outward", color: .white)
                 }
@@ -482,7 +565,8 @@ private struct PracticeStageView: View {
                 Spacer()
             }
         }
-        .frame(height: 300)
+        .aspectRatio(9.0 / 16.0, contentMode: .fit)
+        .frame(maxWidth: .infinity)
         .background(.black, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay(
@@ -490,6 +574,22 @@ private struct PracticeStageView: View {
                 .stroke(.white.opacity(0.08), lineWidth: 1)
         )
         .accessibilityLabel("练习视频预览")
+    }
+
+    private var followStatusTitle: String {
+        switch followStatus {
+        case .tracking: "全身跟随"
+        case .fullFrameFallback: "完整画面"
+        case .unavailable: "跟随数据不可用"
+        }
+    }
+
+    private var followStatusIcon: String {
+        switch followStatus {
+        case .tracking: "person.crop.rectangle"
+        case .fullFrameFallback: "rectangle.inset.filled"
+        case .unavailable: "exclamationmark.triangle"
+        }
     }
 
     private func timeLabel(_ time: TimeInterval) -> String {
@@ -502,25 +602,37 @@ private struct PracticeStageView: View {
 private struct PracticeAnalysisOverlay: View {
     let package: AnalysisPackage
     let currentTime: TimeInterval
+    let followFrame: PortraitFollowFrame
+    let sourceAspectRatio: Double
     let showSkeleton: Bool
     let isMirrored: Bool
 
     var body: some View {
         GeometryReader { _ in
             Canvas { context, size in
-                if let spotlight = nearestSpotlight {
-                    let rect = CGRect(
-                        x: spotlight.x * size.width,
-                        y: spotlight.y * size.height,
-                        width: spotlight.width * size.width,
-                        height: spotlight.height * size.height
-                    )
+                if let spotlight = nearestSpotlight,
+                   let rect = PracticeOverlayProjection.project(
+                       NormalizedRect(
+                           minX: spotlight.x,
+                           minY: spotlight.y,
+                           width: spotlight.width,
+                           height: spotlight.height
+                       ),
+                       in: followFrame,
+                       sourceAspectRatio: sourceAspectRatio,
+                       canvasSize: size
+                   ) {
                     context.stroke(Path(roundedRect: rect, cornerRadius: 12), with: .color(.yellow), lineWidth: 3)
                 }
 
                 guard showSkeleton, let frame = nearestPose else { return }
-                let points = frame.keypoints.map { keypoint in
-                    CGPoint(x: keypoint.x * size.width, y: keypoint.y * size.height)
+                let points = frame.keypoints.compactMap { keypoint in
+                    PracticeOverlayProjection.project(
+                        CGPoint(x: keypoint.x, y: keypoint.y),
+                        in: followFrame,
+                        sourceAspectRatio: sourceAspectRatio,
+                        canvasSize: size
+                    )
                 }
                 for point in points {
                     context.fill(Path(ellipseIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)), with: .color(.cyan))
