@@ -128,6 +128,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-24：竖屏跟随 Task 2 已完成并通过独立代码审查，状态为“待验收”。`AVMutableVideoComposition` 现在产生精确 9:16 像素输出；连续有效轨迹使用裁切/变换 ramp，旋转素材保持正向，轨迹不可用时完整画面以黑边适配。先前文件级 Swift Testing 筛选会静默执行 0 项，现改以完整 `kpopTests` 目标验证：iPhone 17 Pro Max（iOS 26.5）共 91 项通过、0 失败，Debug 构建通过。Task 3 尚未开始，待用户验收 Task 2。
 - 2026-07-24：用户确认任务继续，竖屏跟随 Task 3 开始。范围为把已验证的 9:16 合成播放器接入练习页，映射聚光框和全身骨架至有效裁切区域，并展示“全身跟随 / 完整画面 / 跟随数据不可用”状态；不修改后端、模型、结果包 schema、云资源或 iOS 27 适配。
 - 2026-07-24：竖屏跟随 Task 3 的代码与自动门禁完成，状态为“待验收”。练习页现在按视频/结果包变化异步重建 `AVPlayerItem`，使用 9:16 `AVPlayerLayer` 播放已验证的跟随合成；聚光框和姿态点使用同一活动裁切投影，完整画面回退时映射到居中的 aspect-fit 有效视频区域，镜像继续同时作用于视频与 overlay。界面显示“全身跟随 / 完整画面 / 跟随数据不可用”三态，并保留速度、循环、进度观察和离开页面清理。2026-07-24 在 iPhone 17 Pro Max、iOS 26.5 Simulator（UDID `DF1DB4C3-C579-46A7-8BEB-D1B01D99A7DA`）运行完整 Xcode 测试：xcresult 总计 `96` 项通过、`0` 失败（动态参数展开为 `99` 次通过）；Debug 构建成功。后端回归为 `210 passed, 1 skipped`，Terraform 格式门禁通过。未修改后端、模型、Analysis Package schema、云资源或 iOS 27 适配。真实 82MAJOR 视频、镜像/速度/循环/离线重启的视觉检查尚未执行：仓库按隐私规则不保存样本，且既有验收标准要求真实 iPhone，不以 Simulator 画面替代；需用户提供本地样本并在真机完成最终验收。
+- 2026-07-24：用户验收竖屏跟随 Task 3，并确认本地合并。Task 3 状态更新为“已完成”；实现提交 `fe29357` 已快进合并到本地 `main`。合并后在干净 worktree 运行完整 iOS 测试时，发现与 Task 3 无关的既有 `AnalysisAPIClientTests/candidateImagePathCannotEscapeConfiguredOrigin` 失败：已提交客户端尚未拒绝绝对 URL 内容路径，但当前主工作区存在未提交的匹配 API 修复。该用户在制品未被纳入本次合并，需在其所属 Task 单独验证和提交。
 
 ## 最近完成任务
 
