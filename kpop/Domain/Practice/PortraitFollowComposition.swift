@@ -42,9 +42,8 @@ enum PortraitFollowCompositionBuilder {
     }
 
     private static func portraitRenderSize(for sourceSize: CGSize) -> CGSize {
-        let height = evenPositive(sourceSize.height)
-        let width = evenPositive(height * PortraitFollowPlan.targetAspect)
-        return CGSize(width: width, height: height)
+        let height = max(32, Int(sourceSize.height.rounded(.down)) / 32 * 32)
+        return CGSize(width: CGFloat(height / 16 * 9), height: CGFloat(height))
     }
 
     private static func makeInstructions(
@@ -176,18 +175,20 @@ enum PortraitFollowCompositionBuilder {
         if isTracking {
             let scaleX = renderSize.width / uprightCrop.width
             let scaleY = renderSize.height / uprightCrop.height
-            return preferredTransform
-                .translatedBy(x: -uprightCrop.minX, y: -uprightCrop.minY)
+            let renderTransform = CGAffineTransform.identity
                 .scaledBy(x: scaleX, y: scaleY)
+                .translatedBy(x: -uprightCrop.minX, y: -uprightCrop.minY)
+            return preferredTransform.concatenating(renderTransform)
         }
 
         let scale = min(renderSize.width / uprightBounds.width, renderSize.height / uprightBounds.height)
         let offsetX = (renderSize.width - uprightBounds.width * scale) / 2
         let offsetY = (renderSize.height - uprightBounds.height * scale) / 2
-        return preferredTransform
-            .translatedBy(x: -uprightBounds.minX, y: -uprightBounds.minY)
-            .scaledBy(x: scale, y: scale)
+        let renderTransform = CGAffineTransform.identity
             .translatedBy(x: offsetX, y: offsetY)
+            .scaledBy(x: scale, y: scale)
+            .translatedBy(x: -uprightBounds.minX, y: -uprightBounds.minY)
+        return preferredTransform.concatenating(renderTransform)
     }
 
     private static func frameTimeRange(
@@ -199,9 +200,5 @@ enum PortraitFollowCompositionBuilder {
         let start = CMTimeMultiplyByRatio(duration, multiplier: Int32(startIndex), divisor: Int32(frameCount))
         let end = CMTimeMultiplyByRatio(duration, multiplier: Int32(endIndex), divisor: Int32(frameCount))
         return CMTimeRange(start: start, end: end)
-    }
-
-    private static func evenPositive(_ value: CGFloat) -> CGFloat {
-        max(2, (value.rounded() / 2).rounded() * 2)
     }
 }
