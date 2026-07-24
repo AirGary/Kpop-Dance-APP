@@ -56,15 +56,17 @@ Run: `xcodebuild -project kpop.xcodeproj -scheme kpop -destination 'platform=iOS
 
 Expected: the new short-gap test fails because the current implementation returns `.fullSource` for the low-confidence keyframe.
 
-- [ ] **Step 3: Add a bounded prior-valid-keyframe lookup**
+- [ ] **Step 3: Add a bounded previous-crop lookup only for geometrically valid low-confidence frames**
 
 ```swift
 private static func heldFrame(
-    in track: [AnalysisSpotlightKeyframe],
-    at time: Double
+    before keyframe: AnalysisSpotlightKeyframe,
+    in track: [AnalysisSpotlightKeyframe]
 ) -> PortraitFollowFrame? {
-    guard let prior = track
-        .filter({ $0.timeSeconds <= time && time - $0.timeSeconds <= maximumGapSeconds })
+    guard isNormalized(keyframe),
+          keyframe.confidence < minimumConfidence,
+          let prior = track
+        .filter({ $0.timeSeconds < keyframe.timeSeconds && keyframe.timeSeconds - $0.timeSeconds <= maximumGapSeconds })
         .sorted(by: { $0.timeSeconds > $1.timeSeconds })
         .first(where: { $0.confidence >= minimumConfidence && isNormalized($0) }),
           let crop = crop(for: prior) else { return nil }
@@ -72,7 +74,7 @@ private static func heldFrame(
 }
 ```
 
-Call `heldFrame(in:at:)` only after interpolation cannot produce a reliable crop; retain `.fullSource` when no eligible previous frame exists.
+Call `heldFrame(before:in:)` only when interpolation produced a normalized frame whose confidence is below the threshold. Retain `.fullSource` for NaN, zero-size, out-of-range or distant frames, preserving the existing invalid-frame safety tests.
 
 - [ ] **Step 4: Run the full iOS test target and inspect the new tests**
 
