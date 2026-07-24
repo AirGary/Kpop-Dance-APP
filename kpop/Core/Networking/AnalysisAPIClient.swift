@@ -110,11 +110,16 @@ nonisolated struct AnalysisAPIClient: Sendable {
 
     func contentURL(jobID: UUID, relativePath: String) throws -> URL {
         let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
+        let parsedPath = URLComponents(string: relativePath)
         guard
             !relativePath.isEmpty,
             !relativePath.contains("\\"),
             !relativePath.hasPrefix("/"),
-            !components.contains(where: { $0 == "." || $0 == ".." })
+            !components.contains(where: { $0 == "." || $0 == ".." }),
+            parsedPath?.scheme == nil,
+            parsedPath?.host == nil,
+            parsedPath?.query == nil,
+            parsedPath?.fragment == nil
         else {
             throw AnalysisAPIError.invalidContentPath
         }
