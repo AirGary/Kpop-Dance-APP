@@ -132,6 +132,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-07-24：用户授权将内容路径安全修复独立合入 `main`。`AnalysisAPIClient.contentURL` 现在拒绝带 scheme、host、query 或 fragment 的相对内容路径，防止外部 URL 或参数进入受保护内容路由；既有路径逃逸回归测试在完整 iOS 测试目标中通过。验证结果为 iPhone 17 Pro Max、iOS 26.5 Simulator 完整测试 `95` 项通过、`0` 失败（动态参数展开为 `98` 次通过），Debug 构建成功。
 - 2026-07-24：用户指定以 iPhone 17 Pro Max（iOS 26.5，UDID `DF1DB4C3-C579-46A7-8BEB-D1B01D99A7DA`）Simulator 进行人工验收。基于干净 `main`（`3944ffd`）的完整 `xcodebuild test` 退出码为 `0`，输出无测试失败；Debug App 成功构建、安装和启动。首次立即截图发生在首帧绘制前而显示白屏；重启后等待 8 秒，首页正常展示 SwiftData 中已有项目、练习项目统计与导航入口。指定的 `-resultBundlePath` 未生成可由 `xcresulttool` 读取的 `Info.plist`，因此本轮不重复宣称精确测试计数。此结果仅为 Simulator 启动与首页视觉冒烟，不替代真实视频的导入、竖屏跟随、镜像/速度/循环或离线重启验收；Task 9 保持待验收。
 - 2026-07-24：用户确认练习页重设计采用 B2“全身锁定舞台”：视频占首屏约 84%，移除黄色目标框，所选舞者以完整全身安全区域稳定构图，骨架默认关闭且仅作低干扰叠加，播放/镜像/循环/骨架/速度收进 45pt 视频底缘控制栏。设计规格为 `docs/superpowers/specs/2026-07-24-practice-full-body-stage-design.md`；尚未开始产品代码实施。
+- 2026-07-24：用户审阅并通过 B2 设计规格，随后授权开始实施。实施计划为 `docs/superpowers/plans/2026-07-24-practice-full-body-stage.md`；将按稳定全身构图、骨架拓扑、沉浸舞台和 Simulator 验收四个独立任务测试先行推进。
 
 ## 最近完成任务
 
