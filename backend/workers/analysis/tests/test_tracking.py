@@ -41,6 +41,17 @@ def test_tracker_assigns_each_detection_to_at_most_one_track() -> None:
     assert len({track.samples[-1].box for track in tracks}) == 2
 
 
+def test_tracker_retains_finished_tracks_for_later_candidate_extraction() -> None:
+    tracker = ByteTrackPersonTracker(max_missed_frames=0, match_iou=0.1)
+    tracker.update((detection(0.0, 0.1),))
+    tracker.update((detection(1.0, 0.12),))
+    tracker.update(())
+
+    assert tracker.tracks == []
+    assert len(tracker.all_tracks) == 1
+    assert [sample.time_seconds for sample in tracker.all_tracks[0].samples] == [0.0, 1.0]
+
+
 def test_normalized_box_rejects_invalid_coordinates() -> None:
     try:
         NormalizedBox(x=0.9, y=0.1, width=0.2, height=0.2)

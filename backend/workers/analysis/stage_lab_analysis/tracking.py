@@ -32,7 +32,13 @@ class ByteTrackPersonTracker:
         self.match_iou = match_iou
         self.max_missed_frames = max_missed_frames
         self.tracks: list[Track] = []
+        self.completed_tracks: list[Track] = []
         self._next_track_id = 1
+
+    @property
+    def all_tracks(self) -> tuple[Track, ...]:
+        """Return every track seen in this video, including completed ones."""
+        return tuple(self.completed_tracks + self.tracks)
 
     def update(self, detections: tuple[Detection, ...]) -> tuple[Track, ...]:
         unmatched_tracks = set(range(len(self.tracks)))
@@ -63,5 +69,11 @@ class ByteTrackPersonTracker:
                 )
             )
             self._next_track_id += 1
-        self.tracks = [track for track in self.tracks if track.missed_frames <= self.max_missed_frames]
+        active_tracks: list[Track] = []
+        for track in self.tracks:
+            if track.missed_frames <= self.max_missed_frames:
+                active_tracks.append(track)
+            else:
+                self.completed_tracks.append(track)
+        self.tracks = active_tracks
         return tuple(sorted(self.tracks, key=lambda track: track.track_id))

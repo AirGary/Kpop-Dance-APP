@@ -91,7 +91,7 @@ class AnalysisWorker:
         candidate_directory = analysis_directory / "candidates"
         candidate_directory.mkdir(parents=True, exist_ok=True)
         extracted = self.candidate_extractor.extract(
-            self.tracker.tracks,
+            self.tracker.all_tracks,
             representative_path=lambda track_id, index: f"analysis/candidates/track-{track_id}-{index}.jpg",
         )
         candidates = type(extracted)(
@@ -143,7 +143,7 @@ class AnalysisWorker:
                         (time_seconds, frame, track.last_sample.box)
                     )
         candidates = self.candidate_extractor.extract(
-            self.tracker.tracks,
+            self.tracker.all_tracks,
             representative_path=lambda track_id, index: f"analysis/candidates/track-{track_id}-{index}.jpg",
         )
         selected = next((candidate for candidate in candidates.candidates if candidate.candidate_id == candidate_id), None)
