@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID 设计已由用户确认，等待规格审阅与实施计划；本轮不启用云端 GPU、账号或新模型权重。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID 设计已由用户确认，实施计划已完成，等待用户审阅并确认开始 Task 1；本轮不启用云端 GPU、账号或新模型权重。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -57,7 +57,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ### 当前进行中的任务
 
-#### Task：保守混合 Re-ID（设计已确认，尚未实施）
+#### Task：保守混合 Re-ID（实施计划待确认）
 
 - 目标：将同一舞者的轨迹碎片保守合并，快速位移、长遮挡或换位不确定时暂停并请求用户确认，避免错误锁定其他舞者。
 - 技术边界：仅使用现有 RTMDet-m、ByteTrack 和 RTMPose 的全身外观/姿态/时序描述；不引入新模型、云端、账号或 Analysis Package schema 变化。
@@ -65,6 +65,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 成本与隐私：仅本机 CPU 与当前 Job 临时目录；不保留人脸嵌入、不上传、不训练、不提交用户媒体。
 - 验收：真实 `Hype Boy` 视频中候选不再暴露大量碎片；所选舞者轨迹覆盖至少 80% 可见时长；不确定时必须确认或回退。
 - 规格：`docs/superpowers/specs/2026-08-04-conservative-hybrid-reid-design.md`。
+- 实施计划：`docs/superpowers/plans/2026-08-04-conservative-hybrid-reid.md`。计划拆为身份簇、可恢复确认状态机、iOS 确认界面、真实本地验收四个独立 PR；尚未修改产品代码或执行真实视频。
 
 #### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 
