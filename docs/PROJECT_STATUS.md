@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID Task 1（身份簇）已完成，待用户验收；本轮不启用云端 GPU、账号或新模型权重。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID Task 1（身份簇）已完成；Task 2 尚未开始。本轮不启用云端 GPU、账号或新模型权重。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -67,7 +67,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 规格：`docs/superpowers/specs/2026-08-04-conservative-hybrid-reid-design.md`。
 - 实施计划：`docs/superpowers/plans/2026-08-04-conservative-hybrid-reid.md`。计划拆为身份簇、可恢复确认状态机、iOS 确认界面、真实本地验收四个独立 PR；真实视频验收仅在 Task 4 执行。
 - 2026-08-04：用户确认开始 Task 1。当前范围仅为本地 Worker 的确定性身份片段、保守聚类、候选上限与代表图选择；FastAPI 状态机、iOS 界面、云端、账号及 Analysis Package v1 均不在本 Task 修改范围。
-- 2026-08-04：Task 1 已完成，待用户验收。Worker 从每条已完成/活动轨迹生成仅 Job 私有的全身 HSV/边缘/时序描述，按高置信合并、确认区间和拒绝区间生成身份簇；候选卡按簇聚合且最多 8 个。已修复身份簇候选到目标分析的全部已接受片段映射；无姿态描述采用更严格的 `0.93` 自动合并门槛；每条轨迹只保留最多六个确定性抽样帧（含首尾），代表图按时间取首/中/尾；内部 JSON 原子持久化且拒绝非有限数值。`analysis/identity-clusters.json` 保持 Job 私有，未改变 API、iOS 或结果包。最终独立审查无 Critical/Important 问题。验证：Worker 聚焦 `18 passed`；`./scripts/verify-local-ai.sh` 为 `104 passed`，CPU 模型探针通过；`./scripts/verify-backend.sh` 为 `210 passed, 1 skipped`，1 条既有 Starlette/httpx 弃用警告。
+- 2026-08-04：Task 1 已完成并由用户验收。Worker 从每条已完成/活动轨迹生成仅 Job 私有的全身 HSV/边缘/时序描述，按高置信合并、确认区间和拒绝区间生成身份簇；候选卡按簇聚合且最多 8 个。已修复身份簇候选到目标分析的全部已接受片段映射；无姿态描述采用更严格的 `0.93` 自动合并门槛；每条轨迹只保留最多六个确定性抽样帧（含首尾），代表图按时间取首/中/尾；内部 JSON 原子持久化且拒绝非有限数值。`analysis/identity-clusters.json` 保持 Job 私有，未改变 API、iOS 或结果包。最终独立审查无 Critical/Important 问题。验证：Worker 聚焦 `18 passed`；`./scripts/verify-local-ai.sh` 为 `104 passed`，CPU 模型探针通过；`./scripts/verify-backend.sh` 为 `210 passed, 1 skipped`，1 条既有 Starlette/httpx 弃用警告。
 
 #### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 
@@ -375,11 +375,12 @@ Stage 6 Task 9 自动实现和门禁已完成；下一步是用户在 Xcode/真�
 - 2026-07-21：用户提出开始 Task 9；根据既有实施计划，Task 9 范围为单视频端到端验收、可重复本地 Demo、隐私/资源检查和长期文档，不扩展新 AI 功能，等待范围确认。
 - 2026-07-21：用户确认开始 Task 9；状态更新为“进行中”，范围保持单视频验收、可重复本地 Demo、隐私/资源检查和长期文档。
 - 2026-07-21：Task 9 实现完成；修复 MPS `nms_impl` 探测错误的 CPU 回退识别，三套自动门禁通过（本地 AI `89 passed`、后端 `207 passed, 1 skipped`、iOS 测试/构建通过），真实短片 smoke `1 passed in 31.35s`。状态更新为“待验收”，等待用户完成人工视觉与真机检查。
+- 2026-08-04：用户验收保守混合 Re-ID Task 1；身份簇 Worker 实现正式标记为“已完成”。Task 2 的确认状态机、持久恢复与 iOS 界面尚未开始，需另行确认。
 
 ## 最后更新时间与对应 Git 提交
 
-- 最后更新：2026-08-04（Asia/Tokyo，保守混合 Re-ID Task 1 完成，待用户验收）。
-- 保守混合 Re-ID Task 1：Draft PR #32；仅包含 Worker 身份簇、候选聚合、内部工件与回归测试。
+- 最后更新：2026-08-04（Asia/Tokyo，保守混合 Re-ID Task 1 已验收）。
+- 保守混合 Re-ID Task 1：用户于 2026-08-04 验收；Draft PR #32 仅包含 Worker 身份簇、候选聚合、内部工件与回归测试。
 - 已部署 Git 提交：`21161a288e73ebc40a5716b01db1d1f8210037a7`。
 - Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。
 - Firebase Authentication 初始化提交：`420493d`，PR #3 合并提交 `59dec60`。
