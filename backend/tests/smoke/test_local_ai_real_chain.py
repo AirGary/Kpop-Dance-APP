@@ -2,22 +2,24 @@ import hashlib
 import json
 import os
 import subprocess
+import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 
 from api.app.config import Settings
 from api.app.main import create_app
+from api.app.ports.analysis_runner import TargetAnalysisAwaitingConfirmation
+from api.app.schemas.analysis import IdentityConfirmationResponse
+from api.app.ports.job_repository import JobRecord
+from api.app.schemas.analysis import AnalysisJobState
+from api.app.schemas.jobs import JobResponse
 
 
 VIDEO = os.environ.get("STAGE_LAB_ACCEPTANCE_VIDEO")
-pytestmark = pytest.mark.skipif(
-    not VIDEO,
-    reason="Set STAGE_LAB_ACCEPTANCE_VIDEO to run the local real-AI chain.",
-)
-
-
 def _duration(path: Path) -> float:
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", str(path)],
@@ -63,6 +65,10 @@ def _upload(client: TestClient, path: Path, headers: dict[str, str]) -> str:
     return completed.json()["id"]
 
 
+@pytest.mark.skipif(
+    not VIDEO,
+    reason="Set STAGE_LAB_ACCEPTANCE_VIDEO to run the local real-AI chain.",
+)
 def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
     path = Path(VIDEO).expanduser().resolve()
     model_root = Path(os.environ.get("LOCAL_AI_MODEL_ROOT", ".local-ai/models"))
@@ -132,3 +138,77 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
         content = restarted.get(f"/v1/jobs/{job_id}/result/content", headers=headers)
         assert content.status_code == 200
         assert content.content[:2] == b"PK"
+
+
+def test_synthetic_confirmation_fixture_contains_no_media(tmp_path):
+    """Exercise owner-scoped confirmation GET/POST without video bytes or real models."""
+    confirmation = IdentityConfirmationResponse.model_validate({
+        "confirmationId": "synthetic-confirmation",
+        "previousImagePath": "analysis/candidates/candidate-1-3.jpg",
+        "candidateImagePath": "analysis/candidates/candidate-2-1.jpg",
+        "previousInterval": {"startSeconds": 1, "endSeconds": 2},
+        "candidateInterval": {"startSeconds": 2, "endSeconds": 3},
+        "candidateClusterId": "candidate-2",
+    })
+    outcome = TargetAnalysisAwaitingConfirmation(confirmation)
+    settings = Settings(
+        environment="local-ai",
+        object_storage_root=tmp_path,
+        local_ai_model_root=tmp_path / "models",
+        pairing_token="synthetic-pairing-token",
+    )
+    app = create_app(settings=settings)
+    coordinator = app.state.container.analysis_coordinator
+    assert coordinator is not None
+
+    class SyntheticRunner:
+        async def detect_candidates(self, owner_id, job_id):
+            return []
+
+        async def analyze_target(self, owner_id, job_id, candidate_id):
+            return outcome
+
+        async def shutdown(self):
+            return None
+
+    coordinator._runner = SyntheticRunner()
+    job_id = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    now = datetime.now(UTC)
+    response = JobResponse(
+        id=job_id,
+        projectId=UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        state=AnalysisJobState.AWAITING_CONFIRMATION,
+        progress=0.6,
+        createdAt=now,
+        updatedAt=now,
+    )
+
+    async def seed() -> None:
+        await coordinator._jobs._repository.create(JobRecord("dev-user-a", "upload", "hash", response))
+        await coordinator._repository.update("dev-user-a", job_id, response)
+        await coordinator._repository.set_target_selection("dev-user-a", job_id, "candidate-1", "target-key")
+        await coordinator._repository.set_identity_confirmation("dev-user-a", job_id, confirmation)
+
+    asyncio.run(seed())
+    headers = {
+        "Authorization": "Bearer dev-user-a",
+        "X-Stage-Lab-Pairing-Token": "synthetic-pairing-token",
+    }
+    with TestClient(app) as client:
+        fetched = client.get(f"/v1/jobs/{job_id}/identity-confirmation", headers=headers)
+        foreign = client.get(
+            f"/v1/jobs/{job_id}/identity-confirmation",
+            headers={**headers, "Authorization": "Bearer dev-user-b"},
+        )
+        submitted = client.post(
+            f"/v1/jobs/{job_id}/identity-confirmation",
+            headers={**headers, "Idempotency-Key": "synthetic-decision"},
+            json={"confirmationId": "synthetic-confirmation", "decision": "same"},
+        )
+
+    assert fetched.status_code == 200
+    assert fetched.json()["candidateClusterId"] == "candidate-2"
+    assert foreign.status_code == 404
+    assert submitted.status_code == 200
+    assert submitted.json()["state"] == "queued"
+    assert not list(tmp_path.rglob("*.mp4"))

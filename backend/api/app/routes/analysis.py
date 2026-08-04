@@ -7,7 +7,13 @@ from fastapi.responses import FileResponse
 from api.app.ports.auth import AuthenticatedUser
 from api.app.routes.identity import authenticated_user
 from api.app.routes.jobs import idempotency_key
-from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResponse, SelectTargetRequest
+from api.app.schemas.analysis import (
+    AnalysisResultResponse,
+    DancerCandidateResponse,
+    IdentityConfirmationResponse,
+    SelectTargetRequest,
+    SubmitIdentityConfirmationRequest,
+)
 from api.app.schemas.errors import APIError
 
 router = APIRouter(prefix="/v1/jobs")
@@ -33,6 +39,34 @@ async def select_target(
     if coordinator is None:
         raise APIError(503, "analysis_unavailable", "Local analysis is not enabled.")
     return await coordinator.select_target(user.user_id, job_id, payload.candidate_id, key)
+
+
+@router.get("/{job_id}/identity-confirmation", response_model=IdentityConfirmationResponse)
+async def identity_confirmation(
+    job_id: UUID,
+    user: Annotated[AuthenticatedUser, Depends(authenticated_user)],
+    request: Request,
+):
+    coordinator = request.app.state.container.analysis_coordinator
+    if coordinator is None:
+        raise APIError(503, "analysis_unavailable", "Local analysis is not enabled.")
+    return await coordinator.identity_confirmation(user.user_id, job_id)
+
+
+@router.post("/{job_id}/identity-confirmation")
+async def submit_identity_confirmation(
+    job_id: UUID,
+    payload: SubmitIdentityConfirmationRequest,
+    user: Annotated[AuthenticatedUser, Depends(authenticated_user)],
+    key: Annotated[str, Depends(idempotency_key)],
+    request: Request,
+):
+    coordinator = request.app.state.container.analysis_coordinator
+    if coordinator is None:
+        raise APIError(503, "analysis_unavailable", "Local analysis is not enabled.")
+    return await coordinator.submit_identity_confirmation(
+        user.user_id, job_id, payload.confirmation_id, payload.decision, key
+    )
 
 
 @router.get("/{job_id}/result", response_model=AnalysisResultResponse)

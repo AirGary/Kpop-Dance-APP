@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID Task 1（身份簇）已完成；Task 2 尚未开始。本轮不启用云端 GPU、账号或新模型权重。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID Task 1（身份簇）与 Task 2（确认状态机与可恢复 checkpoint）已完成。本轮不启用云端 GPU、账号或新模型权重。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -57,17 +57,20 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ### 当前进行中的任务
 
-#### Task：保守混合 Re-ID（实施计划待确认）
+#### Task：保守混合 Re-ID（Task 2 已完成）
 
 - 目标：将同一舞者的轨迹碎片保守合并，快速位移、长遮挡或换位不确定时暂停并请求用户确认，避免错误锁定其他舞者。
 - 技术边界：仅使用现有 RTMDet-m、ByteTrack 和 RTMPose 的全身外观/姿态/时序描述；不引入新模型、云端、账号或 Analysis Package schema 变化。
-- 数据流：片段描述 -> 身份簇 -> 高置信自动合并或 `awaitingIdentityConfirmation` -> 用户 `same` / `different` 决定 -> 从检查点恢复或完整画面回退。
+- 数据流：片段描述 -> 身份簇 -> 高置信自动合并或 `awaitingConfirmation` -> 用户 `same` / `different` 决定 -> 从检查点恢复或完整画面回退。
 - 成本与隐私：仅本机 CPU 与当前 Job 临时目录；不保留人脸嵌入、不上传、不训练、不提交用户媒体。
 - 验收：真实 `Hype Boy` 视频中候选不再暴露大量碎片；所选舞者轨迹覆盖至少 80% 可见时长；不确定时必须确认或回退。
 - 规格：`docs/superpowers/specs/2026-08-04-conservative-hybrid-reid-design.md`。
 - 实施计划：`docs/superpowers/plans/2026-08-04-conservative-hybrid-reid.md`。计划拆为身份簇、可恢复确认状态机、iOS 确认界面、真实本地验收四个独立 PR；真实视频验收仅在 Task 4 执行。
 - 2026-08-04：用户确认开始 Task 1。当前范围仅为本地 Worker 的确定性身份片段、保守聚类、候选上限与代表图选择；FastAPI 状态机、iOS 界面、云端、账号及 Analysis Package v1 均不在本 Task 修改范围。
 - 2026-08-04：Task 1 已完成并由用户验收。Worker 从每条已完成/活动轨迹生成仅 Job 私有的全身 HSV/边缘/时序描述，按高置信合并、确认区间和拒绝区间生成身份簇；候选卡按簇聚合且最多 8 个。已修复身份簇候选到目标分析的全部已接受片段映射；无姿态描述采用更严格的 `0.93` 自动合并门槛；每条轨迹只保留最多六个确定性抽样帧（含首尾），代表图按时间取首/中/尾；内部 JSON 原子持久化且拒绝非有限数值。`analysis/identity-clusters.json` 保持 Job 私有，未改变 API、iOS 或结果包。最终独立审查无 Critical/Important 问题。验证：Worker 聚焦 `18 passed`；`./scripts/verify-local-ai.sh` 为 `104 passed`，CPU 模型探针通过；`./scripts/verify-backend.sh` 为 `210 passed, 1 skipped`，1 条既有 Starlette/httpx 弃用警告。
+- 2026-08-04：用户已确认 Task 2 分支范围；当前实施只覆盖 Worker 片段 checkpoint、`awaitingConfirmation` FastAPI 状态机、私有确认/决定持久化与恢复测试。不会修改 iOS UI、增加模型/云端/账号或改变 Analysis Package v1 五成员格式。初始 RED 证据：`test_identity_confirmation.py` 因 `IdentityConfirmationResponse` 尚不存在而在收集阶段失败。审查修补 RED 证据：合成簇 `[1, 3]` 在确认带 `1 -> 2` 前错误地产生 fragment `3` checkpoint，持久 decision 精确重放保持 `awaitingConfirmation`，旧 `_analyze` task 未结束时确认导致续跑丢失；已各自新增回归。最终 Important 修补：repository 以前只能读取最后一个 decision，且 Job record 与 `analysis-state.json` 在崩溃时可能分别为 `queued` / `awaitingConfirmation`；现在按 confirmation ID 查找历史 decision，并在恢复时基于 pending confirmation/decision 收敛两份记录后再调度。合成 smoke 现通过实际私有 GET/POST confirmation 链，不使用视频或模型。复审修补：历史 c1 的精确重放在 c2 仍 pending 时只返回历史成功结果，绝不触碰 c2；恢复逻辑不会因为历史 decision 重新安排 `resultReady` job；若 pending c1 已有 durable c1 decision，恢复会在重新调度前原子清除 `identity-confirmation.json`。第三轮修补：`resume_pending` 现在仅在 Job record 和 `analysis-state.json` 都属于显式白名单 `{queued, analyzing, awaitingConfirmation}` 时继续目标分析；`failedRecoverable`、`importing`、`cancelling` 等非运行态即使存在历史 decision 也保持原状。GREEN/验证证据：`./scripts/verify-backend.sh` 在本 worktree 为 `227 passed, 1 skipped`；confirmation/coordinator 聚焦为 `22 passed`；synthetic smoke 为 `1 passed, 1 skipped`；Worker 确认与检测聚焦为 `9 passed`，各命令均有一条既有 Starlette/httpx 弃用警告。主检出与本 worktree 均无未跟踪的 `.local-ai/venv/bin/python` 可复用；未运行 bootstrap，因此未创建模型、云资源或样本媒体。
+- 2026-08-04：Task 2 最终独立审查通过（0 Critical / 0 Important / 0 Minor），代码状态改为“待用户验收”。尚未推送、创建 PR 或合并；完整 `verify-local-ai.sh` 仍因缺少本地忽略运行时而未执行，真实样本验收保留给 Task 4。
+- 2026-08-04：用户验收 Task 2，正式标记为“已完成”。下一步仅为推送分支并创建草稿 PR；Task 3（iOS 确认界面）尚未开始，需单独确认范围。
 
 #### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 
