@@ -78,6 +78,34 @@ class SelectTargetRequest(BaseModel):
     candidate_id: str = Field(alias="candidateId", min_length=1, max_length=128)
 
 
+IdentityDecisionValue = Literal["same", "different"]
+
+
+class IdentityConfirmationResponse(BaseModel):
+    """One owner/job-private identity transition that needs an explicit decision."""
+
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    confirmation_id: str = Field(alias="confirmationId", min_length=1, max_length=128)
+    previous_image_path: str = Field(alias="previousImagePath", min_length=1)
+    candidate_image_path: str = Field(alias="candidateImagePath", min_length=1)
+    previous_interval: AppearanceInterval = Field(alias="previousInterval")
+    candidate_interval: AppearanceInterval = Field(alias="candidateInterval")
+    candidate_cluster_id: str = Field(alias="candidateClusterId", min_length=1, max_length=128)
+
+    @field_validator("previous_image_path", "candidate_image_path")
+    @classmethod
+    def confirmation_image_paths_must_be_relative(cls, path: str) -> str:
+        return _relative_content_path(path)
+
+
+class SubmitIdentityConfirmationRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    confirmation_id: str = Field(alias="confirmationId", min_length=1, max_length=128)
+    decision: IdentityDecisionValue
+
+
 class AnalysisResultResponse(BaseModel):
     model_config = ConfigDict(frozen=True, populate_by_name=True)
 

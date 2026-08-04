@@ -1,7 +1,7 @@
 from typing import Protocol
 from uuid import UUID
 
-from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResponse
+from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResponse, IdentityConfirmationResponse, IdentityDecisionValue
 from api.app.schemas.jobs import JobResponse
 
 
@@ -60,3 +60,11 @@ class AnalysisRepository(Protocol):
         job_id: UUID,
         result: AnalysisResultResponse,
     ) -> None: ...
+
+    async def set_identity_confirmation(self, owner_id: str, job_id: UUID, confirmation: IdentityConfirmationResponse | None) -> None: ...
+
+    async def identity_confirmation(self, owner_id: str, job_id: UUID) -> IdentityConfirmationResponse: ...
+
+    async def set_identity_decision(self, owner_id: str, job_id: UUID, confirmation_id: str, decision: IdentityDecisionValue, idempotency_key: str) -> None: ...
+
+    async def identity_decision(self, owner_id: str, job_id: UUID, confirmation_id: str | None = None) -> tuple[str, IdentityDecisionValue, str] | None: ...

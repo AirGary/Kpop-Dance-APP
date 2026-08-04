@@ -13,7 +13,7 @@ from .media import create_proxy
 from .package import PackageInputs, write_analysis_package
 from .pose import RTMPoseEstimator
 from .runtime_probe import load_model_manifest, resolve_model_checkpoint, resolve_model_config
-from .worker import AnalysisWorker
+from .worker import AnalysisWorker, TargetAnalysisAwaitingConfirmation
 
 
 def _arguments() -> argparse.Namespace:
@@ -44,40 +44,70 @@ def main() -> None:
     args = _arguments()
     source = args.workspace / "source.mp4"
     proxy = args.workspace / "analysis" / "proxy.mp4"
-    create_proxy(source, proxy)
-    model_root = args.model_root
-    detector = RTMDetPersonDetector(
-        config=str(model_root / "rtmdet-m-person.py"),
-        checkpoint=str(model_root / "rtmdet-m-person.pth"),
-        device="cpu",
-    )
-    worker = AnalysisWorker(detector=detector, frame_stride=args.frame_stride)
-    if args.operation == "detect":
-        with redirect_stdout(sys.stderr):
-            candidates = worker.detect_candidates(proxy.parent).candidates
-        print(json.dumps({"candidates": [_candidate_json(candidate) for candidate in candidates]}, separators=(",", ":")))
-        return
-    if not args.candidate_id:
-        raise ValueError("target analysis requires a candidate id")
     with redirect_stdout(sys.stderr):
-        import mmpose
-
-        manifest = load_model_manifest(Path(__file__).resolve().parents[1] / "model-manifest.json")
-        pose_model = next(model for model in manifest["models"] if model["role"] == "pose")
-        pose_config = resolve_model_config(
-            pose_model,
-            model_root=model_root,
-            package_root=Path(mmpose.__file__).resolve().parent,
-        )
-        pose_checkpoint = resolve_model_checkpoint(pose_model, model_root=model_root)
-        pose_estimator = RTMPoseEstimator(
-            config=str(pose_config),
-            checkpoint=str(pose_checkpoint),
-            expected_sha256=str(pose_model["sha256"]),
+        create_proxy(source, proxy)
+        model_root = args.model_root
+        detector = RTMDetPersonDetector(
+            config=str(model_root / "rtmdet-m-person.py"),
+            checkpoint=str(model_root / "rtmdet-m-person.pth"),
             device="cpu",
         )
-        beats = extract_beats(proxy, proxy.parent).beats
-        analysis = worker.analyze_target(proxy.parent, args.candidate_id, pose_estimator, beats=beats)
+        worker = AnalysisWorker(detector=detector, frame_stride=args.frame_stride)
+        if args.operation == "detect":
+            candidates = worker.detect_candidates(proxy.parent).candidates
+            response = {"candidates": [_candidate_json(candidate) for candidate in candidates]}
+        else:
+            if not args.candidate_id:
+                raise ValueError("target analysis requires a candidate id")
+            response = _target_response(worker, proxy, args.candidate_id, model_root)
+    print(json.dumps(response, separators=(",", ":")))
+
+
+def _target_response(worker: AnalysisWorker, proxy: Path, candidate_id: str, model_root: Path) -> dict:
+    """Run target work with stdout already redirected to diagnostics-only stderr."""
+    import mmpose
+
+    manifest = load_model_manifest(Path(__file__).resolve().parents[1] / "model-manifest.json")
+    pose_model = next(model for model in manifest["models"] if model["role"] == "pose")
+    pose_config = resolve_model_config(
+        pose_model,
+        model_root=model_root,
+        package_root=Path(mmpose.__file__).resolve().parent,
+    )
+    pose_checkpoint = resolve_model_checkpoint(pose_model, model_root=model_root)
+    pose_estimator = RTMPoseEstimator(
+        config=str(pose_config),
+        checkpoint=str(pose_checkpoint),
+        expected_sha256=str(pose_model["sha256"]),
+        device="cpu",
+    )
+    beats = extract_beats(proxy, proxy.parent).beats
+    outcome = worker.analyze_target(proxy.parent, candidate_id, pose_estimator, beats=beats)
+    return _target_outcome_payload(outcome, proxy)
+
+
+def _target_outcome_payload(outcome, proxy: Path) -> dict:
+    """Serialize only a target outcome; this remains testable without models or media."""
+    if isinstance(outcome, TargetAnalysisAwaitingConfirmation):
+        confirmation = outcome.confirmation
+        return {
+            "outcome": "awaitingConfirmation",
+            "confirmation": {
+                "confirmationId": confirmation.confirmation_id,
+                "previousImagePath": confirmation.previous_image_path,
+                "candidateImagePath": confirmation.candidate_image_path,
+                "previousInterval": {
+                    "startSeconds": confirmation.previous_interval[0],
+                    "endSeconds": confirmation.previous_interval[1],
+                },
+                "candidateInterval": {
+                    "startSeconds": confirmation.candidate_interval[0],
+                    "endSeconds": confirmation.candidate_interval[1],
+                },
+                "candidateClusterId": confirmation.candidate_cluster_id,
+            },
+        }
+    analysis = outcome.result
     if not analysis.pose_frames:
         raise RuntimeError("selected candidate has no valid pose frames")
     result_path = proxy.parent / "result-v1.zip"
@@ -91,7 +121,7 @@ def main() -> None:
             confidence=[{"startSeconds": analysis.pose_frames[0].time_seconds, "endSeconds": analysis.pose_frames[-1].time_seconds, "confidence": min(item.confidence for item in analysis.pose_frames)}],
         ),
     )
-    print(json.dumps({"result": {"schemaVersion": 1, "sha256": artifact.sha256, "byteCount": artifact.byte_count, "contentPath": "analysis/result-v1.zip"}}, separators=(",", ":")))
+    return {"outcome": "completed", "result": {"schemaVersion": 1, "sha256": artifact.sha256, "byteCount": artifact.byte_count, "contentPath": "analysis/result-v1.zip"}}
 
 
 def _spotlight_json(item) -> dict:

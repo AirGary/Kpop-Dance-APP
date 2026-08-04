@@ -5,8 +5,13 @@ import sys
 from pathlib import Path
 from uuid import UUID
 
-from api.app.ports.analysis_runner import AnalysisRunner
-from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResponse
+from api.app.ports.analysis_runner import (
+    AnalysisRunner,
+    TargetAnalysisAwaitingConfirmation,
+    TargetAnalysisCompleted,
+    TargetAnalysisOutcome,
+)
+from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResponse, IdentityConfirmationResponse
 
 
 class LocalAnalysisRunner(AnalysisRunner):
@@ -31,9 +36,15 @@ class LocalAnalysisRunner(AnalysisRunner):
         payload = await self._run("detect", owner_id, job_id)
         return [DancerCandidateResponse.model_validate(item) for item in payload["candidates"]]
 
-    async def analyze_target(self, owner_id: str, job_id: UUID, candidate_id: str) -> AnalysisResultResponse:
+    async def analyze_target(self, owner_id: str, job_id: UUID, candidate_id: str) -> TargetAnalysisOutcome:
         payload = await self._run("target", owner_id, job_id, candidate_id)
-        return AnalysisResultResponse.model_validate(payload["result"])
+        if payload.get("outcome") == "completed":
+            return TargetAnalysisCompleted(AnalysisResultResponse.model_validate(payload["result"]))
+        if payload.get("outcome") == "awaitingConfirmation":
+            return TargetAnalysisAwaitingConfirmation(
+                IdentityConfirmationResponse.model_validate(payload["confirmation"])
+            )
+        raise RuntimeError("local analysis worker returned an unknown target outcome")
 
     async def shutdown(self) -> None:
         processes = list(self._processes)

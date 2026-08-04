@@ -11,7 +11,7 @@ from typing import Callable, Iterable, Protocol
 from .candidates import CandidateExtractor, CandidateSet
 from .detection import Detection, PersonDetector
 from .identity import ConservativeIdentityClusterer, TrackFragmentBuilder
-from .pose import PoseEstimator, PoseFrame, SpotlightKeyframe, build_spotlight_track, validate_pose_track
+from .pose import PoseEstimator, PoseFrame, PoseKeypoint, SpotlightKeyframe, build_spotlight_track, validate_pose_track
 from .timeline import PracticeSegment, build_practice_timeline
 from .tracking import ByteTrackPersonTracker
 
@@ -26,6 +26,43 @@ class TargetAnalysis:
     pose_frames: tuple[PoseFrame, ...]
     spotlight: tuple[SpotlightKeyframe, ...]
     timeline: tuple[PracticeSegment, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class IdentityConfirmation:
+    confirmation_id: str
+    previous_image_path: str
+    candidate_image_path: str
+    previous_interval: tuple[float, float]
+    candidate_interval: tuple[float, float]
+    candidate_cluster_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class TargetAnalysisCompleted:
+    result: TargetAnalysis
+
+    # Preserve the pre-Task-2 internal test ergonomics for completed outcomes.
+    @property
+    def candidate_id(self) -> str:
+        return self.result.candidate_id
+
+    @property
+    def pose_frames(self) -> tuple[PoseFrame, ...]:
+        return self.result.pose_frames
+
+    @property
+    def spotlight(self) -> tuple[SpotlightKeyframe, ...]:
+        return self.result.spotlight
+
+    @property
+    def timeline(self) -> tuple[PracticeSegment, ...]:
+        return self.result.timeline
+
+
+@dataclass(frozen=True, slots=True)
+class TargetAnalysisAwaitingConfirmation:
+    confirmation: IdentityConfirmation
 
 
 def _opencv_frames(proxy: Path, frame_stride: int = 1):
@@ -144,7 +181,7 @@ class AnalysisWorker:
         pose_estimator: PoseEstimator,
         *,
         beats: tuple[float, ...] = (),
-    ) -> TargetAnalysis:
+    ) -> TargetAnalysisCompleted | TargetAnalysisAwaitingConfirmation:
         proxy = workspace / "proxy.mp4" if workspace.name == "analysis" else workspace / "analysis" / "proxy.mp4"
         if not proxy.is_file():
             raise FileNotFoundError("analysis proxy is missing")
@@ -175,14 +212,25 @@ class AnalysisWorker:
             if selected is None:
                 raise ValueError("selected candidate was not found")
             selected_samples = frame_samples.get(selected.primary_fragment_id, ())
+            result = self._target_result(candidate_id, selected_samples, pose_estimator, beats)
+            return TargetAnalysisCompleted(result)
         else:
-            selected_samples = tuple(
-                sample
-                for fragment_id in selected_fragment_ids
-                for sample in frame_samples.get(fragment_id, ())
+            return self._checkpointed_target_result(
+                proxy.parent,
+                candidate_id,
+                selected_fragment_ids,
+                frame_samples,
+                pose_estimator,
+                beats,
             )
-            if not selected_samples:
-                raise ValueError("selected identity cluster has no tracked frames")
+
+    @staticmethod
+    def _target_result(
+        candidate_id: str,
+        selected_samples: Iterable[tuple[float, object, object]],
+        pose_estimator: PoseEstimator,
+        beats: tuple[float, ...],
+    ) -> TargetAnalysis:
         pose_frames = tuple(
             pose_estimator.estimate(frame, (box.x, box.y, box.width, box.height), time_seconds)
             for time_seconds, frame, box in selected_samples
@@ -194,6 +242,342 @@ class AnalysisWorker:
             spotlight=build_spotlight_track(validated),
             timeline=build_practice_timeline(validated, beats=beats),
         )
+
+    def _checkpointed_target_result(
+        self,
+        analysis_directory: Path,
+        candidate_id: str,
+        selected_fragment_ids: tuple[int, ...],
+        frame_samples: dict[int, list[tuple[float, object, object]]],
+        pose_estimator: PoseEstimator,
+        beats: tuple[float, ...],
+    ) -> TargetAnalysisCompleted | TargetAnalysisAwaitingConfirmation:
+        clusters = self._read_identity_clusters(analysis_directory)
+        fragments = {
+            int(fragment["fragmentId"]): fragment
+            for fragment in clusters["fragments"]
+            if isinstance(fragment, dict) and isinstance(fragment.get("fragmentId"), int)
+        }
+        plan_path = analysis_directory / "target-work-plan.json"
+        plan = self._read_optional_json(plan_path)
+        if plan is None:
+            ordered_fragment_ids = sorted(fragments, key=lambda item: self._fragment_start(fragments, item))
+            accepted_fragment_ids = list(sorted(selected_fragment_ids, key=lambda item: self._fragment_start(fragments, item)))
+            plan = {
+                "candidateId": candidate_id,
+                "fragmentIds": ordered_fragment_ids,
+                "acceptedFragmentIds": accepted_fragment_ids,
+                "excludedFragmentIds": [],
+                "acceptedFragments": accepted_fragment_ids,
+                "rejectedFragments": [],
+                "pendingConfirmationId": None,
+                "pendingFragmentId": None,
+                "pendingPreviousFragmentId": None,
+                "nextFragmentIndex": 0,
+            }
+            self._write_json_atomic(plan_path, plan)
+        if plan.get("candidateId") != candidate_id:
+            raise ValueError("target work plan belongs to another candidate")
+        accepted = self._valid_fragment_ids(
+            plan.get("acceptedFragmentIds", plan.get("acceptedFragments")), fragments
+        )
+        excluded = self._valid_fragment_ids(
+            plan.get("excludedFragmentIds", plan.get("rejectedFragments")), fragments
+        )
+        ordered = self._valid_fragment_ids(
+            plan.get("fragmentIds", sorted(fragments, key=lambda item: self._fragment_start(fragments, item))),
+            fragments,
+        )
+        if set(ordered) != set(fragments):
+            raise ValueError("target work plan does not cover every identity fragment")
+        pending_id = plan.get("pendingConfirmationId")
+        pending_fragment = plan.get("pendingFragmentId")
+        decisions_value = self._read_optional_json(analysis_directory / "identity-decision.json")
+        decisions = (
+            decisions_value.get("decisions", [decisions_value])
+            if isinstance(decisions_value, dict)
+            else []
+        )
+        decision = next(
+            (
+                item for item in reversed(decisions)
+                if isinstance(item, dict) and item.get("confirmationId") == pending_id
+            ),
+            None,
+        )
+        if pending_id is not None and decision is not None:
+            if decision.get("confirmationId") != pending_id or decision.get("decision") not in {"same", "different"}:
+                raise ValueError("identity decision does not match pending confirmation")
+            if not isinstance(pending_fragment, int) or pending_fragment not in fragments:
+                raise ValueError("pending confirmation fragment is invalid")
+            if decision["decision"] == "same" and pending_fragment not in accepted:
+                accepted.append(pending_fragment)
+            if decision["decision"] == "different" and pending_fragment not in excluded:
+                excluded.append(pending_fragment)
+            accepted.sort(key=lambda item: self._fragment_start(fragments, item))
+            plan.update({
+                "acceptedFragmentIds": accepted,
+                "excludedFragmentIds": excluded,
+                "fragmentIds": ordered,
+                "acceptedFragments": accepted,
+                "rejectedFragments": excluded,
+                "pendingConfirmationId": None,
+                "pendingFragmentId": None,
+                "pendingPreviousFragmentId": None,
+            })
+            self._write_json_atomic(plan_path, plan)
+        if pending_id is not None and decision is None:
+            confirmation = self._confirmation_from_plan(analysis_directory, candidate_id, fragments, plan)
+            return TargetAnalysisAwaitingConfirmation(confirmation)
+        checkpoints = analysis_directory / "target-checkpoints"
+        next_index = int(plan.get("nextFragmentIndex", 0))
+        while next_index < len(ordered):
+            fragment_id = ordered[next_index]
+            if fragment_id in excluded:
+                next_index += 1
+                plan["nextFragmentIndex"] = next_index
+                self._write_json_atomic(plan_path, plan)
+                continue
+            if fragment_id not in accepted:
+                pending = self._confirmation_for_fragment(clusters, accepted, excluded, fragment_id)
+                if pending is not None:
+                    previous_fragment, candidate_fragment = pending
+                    confirmation_id = f"identity-{candidate_id}-{previous_fragment}-{candidate_fragment}"
+                    plan.update({
+                        "pendingConfirmationId": confirmation_id,
+                        "pendingFragmentId": candidate_fragment,
+                        "pendingPreviousFragmentId": previous_fragment,
+                    })
+                    self._write_json_atomic(plan_path, plan)
+                    return TargetAnalysisAwaitingConfirmation(
+                        self._confirmation_from_plan(analysis_directory, candidate_id, fragments, plan)
+                    )
+                next_index += 1
+                plan["nextFragmentIndex"] = next_index
+                self._write_json_atomic(plan_path, plan)
+                continue
+            checkpoint = checkpoints / f"{fragment_id}.json"
+            if not checkpoint.exists():
+                samples = frame_samples.get(fragment_id, ())
+                if not samples:
+                    raise ValueError("selected identity fragment has no tracked frames")
+                poses = tuple(
+                    pose_estimator.estimate(frame, (box.x, box.y, box.width, box.height), time_seconds)
+                    for time_seconds, frame, box in samples
+                )
+                self._write_json_atomic(checkpoint, {
+                    "fragmentId": fragment_id,
+                    "poseFrames": [self._pose_json(frame) for frame in validate_pose_track(poses)],
+                })
+            next_index += 1
+            plan["nextFragmentIndex"] = next_index
+            self._write_json_atomic(plan_path, plan)
+        pose_frames = tuple(
+            frame
+            for fragment_id in accepted
+            for frame in self._read_checkpoint(checkpoints / f"{fragment_id}.json")
+        )
+        validated = validate_pose_track(tuple(sorted(pose_frames, key=lambda frame: frame.time_seconds)))
+        return TargetAnalysisCompleted(TargetAnalysis(
+            candidate_id=candidate_id,
+            pose_frames=validated,
+            spotlight=build_spotlight_track(validated),
+            timeline=build_practice_timeline(validated, beats=beats),
+        ))
+
+    @staticmethod
+    def _read_identity_clusters(analysis_directory: Path) -> dict:
+        value = AnalysisWorker._read_optional_json(analysis_directory / "identity-clusters.json")
+        if not isinstance(value, dict) or not isinstance(value.get("fragments"), list) or not isinstance(value.get("decisions"), list):
+            raise ValueError("identity clusters are invalid")
+        return value
+
+    @staticmethod
+    def _read_optional_json(path: Path):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
+        except json.JSONDecodeError as error:
+            raise ValueError("analysis checkpoint JSON is invalid") from error
+
+    @staticmethod
+    def _write_json_atomic(path: Path, value: object) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(value, handle, separators=(",", ":"), sort_keys=True, allow_nan=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            directory_descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    def _fragment_start(fragments: dict[int, dict], fragment_id: int) -> float:
+        try:
+            value = fragments[fragment_id]["startSeconds"]
+        except KeyError as error:
+            raise ValueError("identity fragment is invalid") from error
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not isfinite(value):
+            raise ValueError("identity fragment start is invalid")
+        return float(value)
+
+    @staticmethod
+    def _valid_fragment_ids(value: object, fragments: dict[int, dict]) -> list[int]:
+        if not isinstance(value, list) or any(not isinstance(item, int) or item not in fragments for item in value):
+            raise ValueError("target work plan fragments are invalid")
+        return list(dict.fromkeys(value))
+
+    @staticmethod
+    def _next_confirmation(
+        clusters: dict,
+        accepted: list[int],
+        excluded: list[int],
+        fragments: dict[int, dict],
+    ) -> tuple[int, int] | None:
+        unresolved: list[tuple[int, int]] = []
+        accepted_set = set(accepted)
+        excluded_set = set(excluded)
+        for decision in clusters["decisions"]:
+            if not isinstance(decision, dict) or decision.get("kind") != "awaiting_confirmation":
+                continue
+            earlier = decision.get("earlierFragmentId")
+            later = decision.get("laterFragmentId")
+            if (
+                isinstance(earlier, int)
+                and isinstance(later, int)
+                and earlier in accepted_set
+                and later in fragments
+                and later not in accepted_set
+                and later not in excluded_set
+            ):
+                unresolved.append((earlier, later))
+        return min(unresolved, key=lambda edge: (AnalysisWorker._fragment_start(fragments, edge[1]), edge[1])) if unresolved else None
+
+    @staticmethod
+    def _confirmation_for_fragment(
+        clusters: dict,
+        accepted: list[int],
+        excluded: list[int],
+        fragment_id: int,
+    ) -> tuple[int, int] | None:
+        accepted_set = set(accepted)
+        excluded_set = set(excluded)
+        for decision in clusters["decisions"]:
+            if not isinstance(decision, dict) or decision.get("kind") != "awaiting_confirmation":
+                continue
+            earlier, later = decision.get("earlierFragmentId"), decision.get("laterFragmentId")
+            if (
+                isinstance(earlier, int)
+                and later == fragment_id
+                and earlier in accepted_set
+                and later not in excluded_set
+            ):
+                return earlier, fragment_id
+        return None
+
+    @staticmethod
+    def _confirmation_from_plan(
+        analysis_directory: Path,
+        candidate_id: str,
+        fragments: dict[int, dict],
+        plan: dict,
+    ) -> IdentityConfirmation:
+        pending_fragment = plan.get("pendingFragmentId")
+        previous_fragment = plan.get("pendingPreviousFragmentId")
+        if not isinstance(pending_fragment, int) or not isinstance(previous_fragment, int):
+            raise ValueError("pending confirmation is invalid")
+        inverse_clusters: dict[int, str] = {}
+        clusters = AnalysisWorker._read_identity_clusters(analysis_directory).get("candidateClusters", {})
+        if isinstance(clusters, dict):
+            for cluster_id, ids in clusters.items():
+                if isinstance(cluster_id, str) and isinstance(ids, list):
+                    for fragment_id in ids:
+                        if isinstance(fragment_id, int):
+                            inverse_clusters.setdefault(fragment_id, cluster_id)
+        previous_cluster = inverse_clusters.get(previous_fragment, candidate_id)
+        candidate_cluster = inverse_clusters.get(pending_fragment)
+        if candidate_cluster is None:
+            raise ValueError("candidate confirmation image is unavailable")
+        previous_path = f"analysis/candidates/{previous_cluster}-3.jpg"
+        candidate_path = f"analysis/candidates/{candidate_cluster}-1.jpg"
+        if not (analysis_directory / "candidates" / f"{previous_cluster}-3.jpg").is_file() or not (analysis_directory / "candidates" / f"{candidate_cluster}-1.jpg").is_file():
+            raise RuntimeError("confirmation representative image is unavailable")
+        confirmation_id = plan.get("pendingConfirmationId")
+        if not isinstance(confirmation_id, str) or not confirmation_id:
+            raise ValueError("pending confirmation ID is invalid")
+        return IdentityConfirmation(
+            confirmation_id=confirmation_id,
+            previous_image_path=previous_path,
+            candidate_image_path=candidate_path,
+            previous_interval=AnalysisWorker._fragment_interval(fragments, previous_fragment),
+            candidate_interval=AnalysisWorker._fragment_interval(fragments, pending_fragment),
+            candidate_cluster_id=candidate_cluster,
+        )
+
+    @staticmethod
+    def _fragment_interval(fragments: dict[int, dict], fragment_id: int) -> tuple[float, float]:
+        fragment = fragments.get(fragment_id)
+        if not isinstance(fragment, dict):
+            raise ValueError("identity fragment is invalid")
+        start, end = fragment.get("startSeconds"), fragment.get("endSeconds")
+        if (
+            not isinstance(start, (int, float))
+            or not isinstance(end, (int, float))
+            or isinstance(start, bool)
+            or isinstance(end, bool)
+            or not isfinite(start)
+            or not isfinite(end)
+            or end <= start
+        ):
+            raise ValueError("identity fragment interval is invalid")
+        return float(start), float(end)
+
+    @staticmethod
+    def _pose_json(frame: PoseFrame) -> dict:
+        return {
+            "timeSeconds": frame.time_seconds,
+            "box": list(frame.box),
+            "keypoints": [
+                {"name": point.name, "x": point.x, "y": point.y, "confidence": point.confidence}
+                for point in frame.keypoints
+            ],
+            "confidence": frame.confidence,
+        }
+
+    @staticmethod
+    def _read_checkpoint(path: Path) -> tuple[PoseFrame, ...]:
+        value = AnalysisWorker._read_optional_json(path)
+        if not isinstance(value, dict) or not isinstance(value.get("poseFrames"), list):
+            raise ValueError("pose checkpoint is invalid")
+        frames: list[PoseFrame] = []
+        for item in value["poseFrames"]:
+            if not isinstance(item, dict) or not isinstance(item.get("box"), list) or len(item["box"]) != 4:
+                raise ValueError("pose checkpoint frame is invalid")
+            try:
+                frames.append(PoseFrame(
+                    float(item["timeSeconds"]),
+                    tuple(float(number) for number in item["box"]),
+                    tuple(
+                        PoseKeypoint(
+                            str(point["name"]), float(point["x"]), float(point["y"]), float(point["confidence"])
+                        )
+                        for point in item["keypoints"]
+                    ),
+                    float(item["confidence"]),
+                ))
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError("pose checkpoint frame is invalid") from error
+        return validate_pose_track(frames)
 
     @staticmethod
     def _selected_cluster_fragment_ids(analysis_directory: Path, candidate_id: str) -> tuple[int, ...] | None:

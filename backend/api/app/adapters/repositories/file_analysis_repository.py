@@ -10,7 +10,12 @@ from api.app.ports.analysis_repository import (
     AnalysisNotFoundError,
     UnsafeAnalysisPathError,
 )
-from api.app.schemas.analysis import AnalysisResultResponse, DancerCandidateResponse
+from api.app.schemas.analysis import (
+    AnalysisResultResponse,
+    DancerCandidateResponse,
+    IdentityConfirmationResponse,
+    IdentityDecisionValue,
+)
 from api.app.schemas.jobs import JobResponse
 
 
@@ -20,6 +25,7 @@ _SAFE_OWNER_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 class FileAnalysisRepository:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
+        self._identity_lock = asyncio.Lock()
 
     async def load(self, owner_id: str, job_id: UUID) -> JobResponse:
         return await asyncio.to_thread(self._read_state, owner_id, job_id)
@@ -99,6 +105,64 @@ class FileAnalysisRepository:
             result.model_dump(mode="json", by_alias=True),
         )
 
+    async def set_identity_confirmation(
+        self,
+        owner_id: str,
+        job_id: UUID,
+        confirmation: IdentityConfirmationResponse | None,
+    ) -> None:
+        """Atomically publish, or clear, the single pending confirmation for a job."""
+        async with self._identity_lock:
+            await asyncio.to_thread(self._require_state, owner_id, job_id)
+            path = self._analysis_directory(owner_id, job_id) / "identity-confirmation.json"
+            if confirmation is None:
+                await asyncio.to_thread(path.unlink, missing_ok=True)
+                return
+            await asyncio.to_thread(
+                self._write_json,
+                path,
+                confirmation.model_dump(mode="json", by_alias=True),
+            )
+
+    async def identity_confirmation(
+        self, owner_id: str, job_id: UUID
+    ) -> IdentityConfirmationResponse:
+        return await asyncio.to_thread(self._read_identity_confirmation, owner_id, job_id)
+
+    async def set_identity_decision(
+        self,
+        owner_id: str,
+        job_id: UUID,
+        confirmation_id: str,
+        decision: IdentityDecisionValue,
+        idempotency_key: str,
+    ) -> None:
+        """Make the first decision immutable while allowing its exact replay."""
+        async with self._identity_lock:
+            await asyncio.to_thread(self._require_state, owner_id, job_id)
+            path = self._analysis_directory(owner_id, job_id) / "identity-decision.json"
+            existing = await asyncio.to_thread(self._read_optional_json, path)
+            value = {
+                "confirmationId": confirmation_id,
+                "decision": decision,
+                "idempotencyKey": idempotency_key,
+            }
+            decisions = self._decision_values(existing)
+            for stored in decisions:
+                if stored == value:
+                    return
+                if stored["confirmationId"] == confirmation_id or stored["idempotencyKey"] == idempotency_key:
+                    raise ValueError("identity decision is immutable")
+            decisions.append(value)
+            await asyncio.to_thread(self._write_json, path, {"decisions": decisions})
+
+    async def identity_decision(
+        self, owner_id: str, job_id: UUID, confirmation_id: str | None = None
+    ) -> tuple[str, IdentityDecisionValue, str] | None:
+        return await asyncio.to_thread(
+            self._read_identity_decision, owner_id, job_id, confirmation_id
+        )
+
     def _read_state(self, owner_id: str, job_id: UUID) -> JobResponse:
         return JobResponse.model_validate(self._read_json(self._state_path(owner_id, job_id)))
 
@@ -139,6 +203,60 @@ class FileAnalysisRepository:
             self._read_json(self._analysis_directory(owner_id, job_id) / "result-metadata.json")
         )
 
+    def _read_identity_confirmation(
+        self, owner_id: str, job_id: UUID
+    ) -> IdentityConfirmationResponse:
+        self._require_state(owner_id, job_id)
+        return IdentityConfirmationResponse.model_validate(
+            self._read_json(self._analysis_directory(owner_id, job_id) / "identity-confirmation.json")
+        )
+
+    def _read_identity_decision(
+        self, owner_id: str, job_id: UUID, confirmation_id: str | None = None
+    ) -> tuple[str, IdentityDecisionValue, str] | None:
+        self._require_state(owner_id, job_id)
+        value = self._read_optional_json(
+            self._analysis_directory(owner_id, job_id) / "identity-decision.json"
+        )
+        decisions = self._decision_values(value)
+        if not decisions:
+            return None
+        latest = next(
+            (item for item in reversed(decisions) if confirmation_id is None or item["confirmationId"] == confirmation_id),
+            None,
+        )
+        if latest is None:
+            return None
+        confirmation_id = latest["confirmationId"]
+        decision = latest["decision"]
+        idempotency_key = latest["idempotencyKey"]
+        if (
+            not isinstance(confirmation_id, str)
+            or decision not in {"same", "different"}
+            or not isinstance(idempotency_key, str)
+        ):
+            raise ValueError("identity decision is invalid")
+        return confirmation_id, decision, idempotency_key
+
+    @staticmethod
+    def _decision_values(value: object) -> list[dict]:
+        if value is None:
+            return []
+        values = value.get("decisions") if isinstance(value, dict) and "decisions" in value else [value]
+        if not isinstance(values, list):
+            raise ValueError("identity decision is invalid")
+        valid: list[dict] = []
+        for item in values:
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("confirmationId"), str)
+                or item.get("decision") not in {"same", "different"}
+                or not isinstance(item.get("idempotencyKey"), str)
+            ):
+                raise ValueError("identity decision is invalid")
+            valid.append(item)
+        return valid
+
     def _require_state(self, owner_id: str, job_id: UUID) -> None:
         self._read_json(self._state_path(owner_id, job_id))
 
@@ -147,6 +265,13 @@ class FileAnalysisRepository:
             return json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError as error:
             raise AnalysisNotFoundError from error
+
+    @staticmethod
+    def _read_optional_json(path: Path):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return None
 
     @staticmethod
     def _write_json(path: Path, value: object) -> None:
