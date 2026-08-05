@@ -77,6 +77,14 @@ actor FakeAnalysisService: AnalysisService {
         return job.snapshot
     }
 
+    func identityConfirmation(jobID: UUID) throws -> IdentityConfirmation {
+        throw AnalysisServiceError.resultNotReady(jobID)
+    }
+
+    func submitIdentityConfirmation(jobID: UUID, confirmation: IdentityConfirmation, decision: IdentityDecisionValue) throws -> AnalysisJobSnapshot {
+        throw AnalysisServiceError.resultNotReady(jobID)
+    }
+
     func result(jobID: UUID) throws -> AnalysisResultDescriptor {
         guard let job = jobs[jobID] else {
             throw AnalysisServiceError.unknownJob(jobID)

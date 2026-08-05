@@ -42,6 +42,26 @@ struct RemoteAnalysisServiceTests {
         #expect(await keyBox.value == "target-223e4567-e89b-12d3-a456-426614174000-candidate-1")
     }
 
+    @Test
+    func identityDecisionUsesStableKeyAndMapsConfirmation() async throws {
+        let keyBox = KeyBox()
+        let client = AnalysisAPIClient(configuration: configuration()) { request in
+            if request.httpMethod == "GET" {
+                return (Data(#"{"confirmationId":"confirm-1","kind":"identity","previousImagePath":"analysis/one.jpg","candidateImagePath":"analysis/two.jpg","previousInterval":{"startSeconds":1,"endSeconds":2},"candidateInterval":{"startSeconds":2,"endSeconds":3},"candidateClusterId":"candidate-1"}"#.utf8), response(status: 200, request: request))
+            }
+            await keyBox.set(request.value(forHTTPHeaderField: "Idempotency-Key"))
+            return (Data(RemoteJobJSON.queued.utf8), response(status: 200, request: request))
+        }
+        let service = RemoteAnalysisService(client: client)
+        let jobID = UUID(uuidString: "223E4567-E89B-12D3-A456-426614174000")!
+
+        let confirmation = try await service.identityConfirmation(jobID: jobID)
+        _ = try await service.submitIdentityConfirmation(jobID: jobID, confirmation: confirmation, decision: .different)
+
+        #expect(confirmation.confirmationID == "confirm-1")
+        #expect(await keyBox.value == "identity-223e4567-e89b-12d3-a456-426614174000-confirm-1-different")
+    }
+
     private func configuration() -> JobsAPIConfiguration {
         JobsAPIConfiguration(baseURL: URL(string: "http://127.0.0.1:8000")!, bearerToken: "dev-user-a")
     }

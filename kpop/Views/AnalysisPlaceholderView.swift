@@ -325,6 +325,12 @@ struct AnalysisView: View {
                 HStack { ProgressView(); Text("正在提交目标舞者 \(candidateID)…") }
             case .analyzing(let snapshot):
                 analysisProgress(snapshot, title: "正在生成目标分析")
+            case .awaitingIdentityConfirmation:
+                Label("需要确认舞者身份", systemImage: "person.crop.circle.badge.questionmark")
+                Button("前往确认") {
+                    router.replaceTop(with: .dancerPick(projectId: project.id))
+                }
+                .buttonStyle(.borderedProminent)
             case .resultReady:
                 StatusBadge(text: "分析结果已就绪", systemImage: "checkmark.circle.fill", color: .green)
             case .failed(let message, let recoverable):

@@ -58,6 +58,27 @@ actor RemoteAnalysisService: AnalysisService, AnalysisPackageDownloader {
         }
     }
 
+    func identityConfirmation(jobID: UUID) async throws -> IdentityConfirmation {
+        do {
+            let value = try await client.identityConfirmation(jobID: jobID)
+            return IdentityConfirmation(
+                confirmationID: value.confirmationId,
+                previousImagePath: value.previousImagePath,
+                candidateImagePath: value.candidateImagePath,
+                previousInterval: CandidateAppearanceInterval(startSeconds: value.previousInterval.startSeconds, endSeconds: value.previousInterval.endSeconds),
+                candidateInterval: CandidateAppearanceInterval(startSeconds: value.candidateInterval.startSeconds, endSeconds: value.candidateInterval.endSeconds),
+                candidateClusterID: value.candidateClusterId
+            )
+        } catch { throw map(error) }
+    }
+
+    func submitIdentityConfirmation(jobID: UUID, confirmation: IdentityConfirmation, decision: IdentityDecisionValue) async throws -> AnalysisJobSnapshot {
+        do {
+            let job = try await client.submitIdentityConfirmation(jobID: jobID, confirmationID: confirmation.confirmationID, decision: decision, idempotencyKey: Self.identityDecisionKey(jobID: jobID, confirmationID: confirmation.confirmationID, decision: decision))
+            return Self.snapshot(from: job)
+        } catch { throw map(error) }
+    }
+
     func result(jobID: UUID) async throws -> AnalysisResultDescriptor {
         do {
             let projectID = try await status(jobID: jobID).projectID
@@ -85,6 +106,10 @@ actor RemoteAnalysisService: AnalysisService, AnalysisPackageDownloader {
 
     static func selectionKey(jobID: UUID, candidateID: String) -> String {
         "target-\(jobID.uuidString.lowercased())-\(candidateID)"
+    }
+
+    static func identityDecisionKey(jobID: UUID, confirmationID: String, decision: IdentityDecisionValue) -> String {
+        "identity-\(jobID.uuidString.lowercased())-\(confirmationID)-\(decision.rawValue)"
     }
 
     private static func snapshot(from job: RemoteJob) -> AnalysisJobSnapshot {

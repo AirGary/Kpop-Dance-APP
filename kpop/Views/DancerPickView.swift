@@ -28,6 +28,11 @@ struct DancerPickView: View {
     @State private var selectedCandidateID: String?
     @State private var realAnalysisModel: RealAnalysisModel?
 
+    init(project: DanceProject, initialRealAnalysisModel: RealAnalysisModel? = nil) {
+        self.project = project
+        _realAnalysisModel = State(initialValue: initialRealAnalysisModel)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -134,6 +139,24 @@ struct DancerPickView: View {
         .background(AppUI.background)
         .navigationTitle("选择舞者")
         .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: Binding(
+            get: {
+                guard let model = realAnalysisModel else { return false }
+                if case .awaitingIdentityConfirmation = model.state { return true }
+                return false
+            },
+            set: { _ in }
+        )) {
+            if case .awaitingIdentityConfirmation(let confirmation) = realAnalysisModel?.state {
+                IdentityConfirmationView(
+                    confirmation: confirmation,
+                    client: analysisAPIClient,
+                    jobID: remoteJobUUID
+                ) { decision in
+                    await realAnalysisModel?.confirmIdentity(decision, project: project) ?? false
+                }
+            }
+        }
         .task(id: project.remoteJobId) {
             guard
                 let analysisService,

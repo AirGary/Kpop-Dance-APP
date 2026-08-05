@@ -50,6 +50,27 @@ struct AnalysisAPIClientTests {
     }
 
     @Test
+    func identityConfirmationUsesProtectedPathsAndDecisionContract() async throws {
+        let client = AnalysisAPIClient(configuration: configuration()) { request in
+            if request.httpMethod == "GET" {
+                #expect(request.url?.path == "/v1/jobs/\(self.jobID.uuidString)/identity-confirmation")
+                return (Data(#"{"confirmationId":"confirm-1","kind":"identity","previousImagePath":"analysis/candidates/one.jpg","candidateImagePath":"analysis/candidates/two.jpg","previousInterval":{"startSeconds":1,"endSeconds":2},"candidateInterval":{"startSeconds":2,"endSeconds":3},"candidateClusterId":"candidate-1"}"#.utf8), self.response(status: 200, request: request))
+            }
+            #expect(request.httpMethod == "POST")
+            #expect(request.value(forHTTPHeaderField: "Idempotency-Key") == "identity-key")
+            let body = try #require(request.httpBody)
+            let object = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
+            #expect(object["confirmationId"] == "confirm-1")
+            #expect(object["decision"] == "same")
+            return (Data(RemoteJobJSON.draft.utf8), self.response(status: 200, request: request))
+        }
+
+        let confirmation = try await client.identityConfirmation(jobID: jobID)
+        #expect(confirmation.candidateClusterId == "candidate-1")
+        _ = try await client.submitIdentityConfirmation(jobID: jobID, confirmationID: confirmation.confirmationId, decision: .same, idempotencyKey: "identity-key")
+    }
+
+    @Test
     func resultDecodesChecksumAndFractionalMetadata() async throws {
         let transport = HTTPTransport { request in
             #expect(request.url?.path == "/v1/jobs/\(self.jobID.uuidString)/result")
