@@ -20,9 +20,9 @@ struct IdentityConfirmationView: View {
                         detail: "确认后会从此片段继续分析；选择“不是”将保留该时段的完整画面。"
                     )
                     HStack(spacing: 12) {
-                        ConfirmationImage(client: client, jobID: jobID, path: confirmation.previousImagePath)
+                        ConfirmationImage(client: client, jobID: jobID, path: confirmation.previousImagePath, placeholderID: "identity-confirmation-previous-placeholder")
                             .accessibilityLabel("确认前一片段")
-                        ConfirmationImage(client: client, jobID: jobID, path: confirmation.candidateImagePath)
+                        ConfirmationImage(client: client, jobID: jobID, path: confirmation.candidateImagePath, placeholderID: "identity-confirmation-candidate-placeholder")
                             .accessibilityLabel("确认候选片段")
                     }
                     .frame(height: 210)
@@ -86,12 +86,18 @@ private struct ConfirmationImage: View {
     let client: AnalysisAPIClient?
     let jobID: UUID?
     let path: String
+    let placeholderID: String
     @State private var image: UIImage?
 
     var body: some View {
         Group {
             if let image { Image(uiImage: image).resizable().scaledToFill() }
-            else { ContentUnavailableView("图片不可用", systemImage: "photo") }
+            else {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo")
+                    Text("图片不可用").accessibilityIdentifier(placeholderID)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
