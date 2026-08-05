@@ -89,6 +89,19 @@ struct RealAnalysisModelTests {
         #expect(await service.decisionCount == 1)
         #expect(project.phase == .analyzing)
     }
+
+    @Test
+    func failedIdentityDecisionKeepsConfirmationRetryable() async throws {
+        let project = DanceProject(title: "Demo", phase: .analyzing)
+        project.remoteJobId = UUID().uuidString
+        let confirmation = IdentityConfirmation(confirmationID: "confirm-1", previousImagePath: "analysis/one.jpg", candidateImagePath: "analysis/two.jpg", previousInterval: CandidateAppearanceInterval(startSeconds: 1, endSeconds: 2), candidateInterval: CandidateAppearanceInterval(startSeconds: 2, endSeconds: 3), candidateClusterID: "candidate-1")
+        let service = ScriptedAnalysisService(snapshots: [AnalysisJobSnapshot(projectID: project.id, state: .awaitingConfirmation, progress: 0.7)], confirmation: confirmation, decisionCancellation: true)
+        let model = RealAnalysisModel(service: service, pollIntervalNanoseconds: 0)
+
+        await model.start(project: project)
+        #expect(await model.confirmIdentity(.different, project: project) == false)
+        #expect(model.state == .awaitingIdentityConfirmation(confirmation))
+    }
 }
 
 private actor ScriptedAnalysisService: AnalysisService {
@@ -96,16 +109,20 @@ private actor ScriptedAnalysisService: AnalysisService {
     let candidateList: [DancerCandidate]
     let resultValue: AnalysisResultDescriptor?
     let confirmationValue: IdentityConfirmation?
+    let decisionError: Bool
+    let decisionCancellation: Bool
     private(set) var selectionCount = 0
     private(set) var confirmationCount = 0
     private(set) var decisionCount = 0
     private var index = 0
 
-    init(snapshots: [AnalysisJobSnapshot], candidates: [DancerCandidate] = [], result: AnalysisResultDescriptor? = nil, confirmation: IdentityConfirmation? = nil) {
+    init(snapshots: [AnalysisJobSnapshot], candidates: [DancerCandidate] = [], result: AnalysisResultDescriptor? = nil, confirmation: IdentityConfirmation? = nil, decisionError: Bool = false, decisionCancellation: Bool = false) {
         self.snapshots = snapshots
         self.candidateList = candidates
         self.resultValue = result
         self.confirmationValue = confirmation
+        self.decisionError = decisionError
+        self.decisionCancellation = decisionCancellation
     }
 
     func startDetection(projectID: UUID) async throws -> AnalysisJobSnapshot { try await status(jobID: UUID()) }
@@ -125,6 +142,8 @@ private actor ScriptedAnalysisService: AnalysisService {
     }
     func submitIdentityConfirmation(jobID: UUID, confirmation: IdentityConfirmation, decision: IdentityDecisionValue) async throws -> AnalysisJobSnapshot {
         decisionCount += 1
+        if decisionCancellation { throw CancellationError() }
+        if decisionError { throw AnalysisServiceError.transport }
         return snapshots.last ?? AnalysisJobSnapshot(projectID: UUID(), state: .queued, progress: 0)
     }
     func result(jobID: UUID) async throws -> AnalysisResultDescriptor {

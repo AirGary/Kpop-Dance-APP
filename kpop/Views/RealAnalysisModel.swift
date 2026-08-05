@@ -85,7 +85,9 @@ final class RealAnalysisModel {
             _ = try await service.submitIdentityConfirmation(jobID: jobID, confirmation: confirmation, decision: decision)
             await poll(jobID: jobID, project: project)
             return true
-        } catch is CancellationError { return false
+        } catch is CancellationError {
+            state = .awaitingIdentityConfirmation(confirmation)
+            return false
         } catch let error as AnalysisServiceError {
             state = .awaitingIdentityConfirmation(confirmation)
             _ = error
