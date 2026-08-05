@@ -26,12 +26,14 @@ final class RealAnalysisModel {
         service: any AnalysisService,
         packageDownloader: (any AnalysisPackageDownloader)? = nil,
         packageStore: AnalysisPackageStore? = nil,
-        pollIntervalNanoseconds: UInt64 = 500_000_000
+        pollIntervalNanoseconds: UInt64 = 500_000_000,
+        initialState: RealAnalysisState = .idle
     ) {
         self.service = service
         self.packageDownloader = packageDownloader
         self.packageStore = packageStore
         self.pollIntervalNanoseconds = pollIntervalNanoseconds
+        self.state = initialState
     }
 
     var canRetry: Bool {
@@ -80,7 +82,6 @@ final class RealAnalysisModel {
             state = .failed("身份确认已失效，请重新读取状态。", recoverable: true)
             return false
         }
-        state = .analyzing(AnalysisJobSnapshot(id: jobID, projectID: project.id, state: .queued, progress: 0))
         do {
             _ = try await service.submitIdentityConfirmation(jobID: jobID, confirmation: confirmation, decision: decision)
             await poll(jobID: jobID, project: project)

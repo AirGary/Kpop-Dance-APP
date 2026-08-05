@@ -28,6 +28,11 @@ struct DancerPickView: View {
     @State private var selectedCandidateID: String?
     @State private var realAnalysisModel: RealAnalysisModel?
 
+    init(project: DanceProject, initialRealAnalysisModel: RealAnalysisModel? = nil) {
+        self.project = project
+        _realAnalysisModel = State(initialValue: initialRealAnalysisModel)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
