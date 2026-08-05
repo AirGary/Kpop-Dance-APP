@@ -73,6 +73,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-08-04：用户验收 Task 2，正式标记为“已完成”。草稿 PR #34 已于同日合并至 `main`，合并提交 `8c70e8e`。Task 3（iOS 确认界面）尚未开始，需单独确认范围。
 - 2026-08-04：用户确认开始 Task 3。范围为 iPhone 17 Pro Max（iOS 26.5）的全屏身份确认页、受保护图片加载、稳定幂等决定提交与轮询恢复；不修改后端、模型、云端、候选布局或 Analysis Package v1。已确认设计与实施计划分别为 `docs/superpowers/specs/2026-08-04-reid-task3-ios-confirmation-design.md`、`docs/superpowers/plans/2026-08-04-reid-task3-ios-confirmation.md`。
 - 2026-08-05：Task 3 首个可验证检查点完成：客户端可读取/校验确认载荷、提交 `same`/`different` 的稳定幂等请求；模型在 `awaitingConfirmation` 时停止轮询并全屏呈现确认页，成功后恢复轮询，失败时保留页内重试。指定 iPhone 17 Pro Max（iOS 26.5）运行 `verify-ios.sh` 退出码 0；Task 仍进行中，尚未进行独立审查、PR 或验收。
+- 2026-08-05：Task 3 代码完成、待用户验收。全屏确认页具备受保护图片/占位、时间范围、same/different 可访问控件、提交禁用与取消/传输失败后重试；仅在 UI 测试启动参数下提供内存 fixture。最终 `verify-ios.sh`（iPhone 17 Pro Max，iOS 26.5）退出码 0，`git diff --check` 通过；尚未推送、创建 PR 或合并。
 
 #### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 
