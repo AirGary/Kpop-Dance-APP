@@ -57,7 +57,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ### 当前进行中的任务
 
-#### Task：保守混合 Re-ID（Task 2 已完成）
+#### Task：保守混合 Re-ID（Task 3 iOS 确认界面进行中）
 
 - 目标：将同一舞者的轨迹碎片保守合并，快速位移、长遮挡或换位不确定时暂停并请求用户确认，避免错误锁定其他舞者。
 - 技术边界：仅使用现有 RTMDet-m、ByteTrack 和 RTMPose 的全身外观/姿态/时序描述；不引入新模型、云端、账号或 Analysis Package schema 变化。
@@ -71,6 +71,8 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-08-04：用户已确认 Task 2 分支范围；当前实施只覆盖 Worker 片段 checkpoint、`awaitingConfirmation` FastAPI 状态机、私有确认/决定持久化与恢复测试。不会修改 iOS UI、增加模型/云端/账号或改变 Analysis Package v1 五成员格式。初始 RED 证据：`test_identity_confirmation.py` 因 `IdentityConfirmationResponse` 尚不存在而在收集阶段失败。审查修补 RED 证据：合成簇 `[1, 3]` 在确认带 `1 -> 2` 前错误地产生 fragment `3` checkpoint，持久 decision 精确重放保持 `awaitingConfirmation`，旧 `_analyze` task 未结束时确认导致续跑丢失；已各自新增回归。最终 Important 修补：repository 以前只能读取最后一个 decision，且 Job record 与 `analysis-state.json` 在崩溃时可能分别为 `queued` / `awaitingConfirmation`；现在按 confirmation ID 查找历史 decision，并在恢复时基于 pending confirmation/decision 收敛两份记录后再调度。合成 smoke 现通过实际私有 GET/POST confirmation 链，不使用视频或模型。复审修补：历史 c1 的精确重放在 c2 仍 pending 时只返回历史成功结果，绝不触碰 c2；恢复逻辑不会因为历史 decision 重新安排 `resultReady` job；若 pending c1 已有 durable c1 decision，恢复会在重新调度前原子清除 `identity-confirmation.json`。第三轮修补：`resume_pending` 现在仅在 Job record 和 `analysis-state.json` 都属于显式白名单 `{queued, analyzing, awaitingConfirmation}` 时继续目标分析；`failedRecoverable`、`importing`、`cancelling` 等非运行态即使存在历史 decision 也保持原状。GREEN/验证证据：`./scripts/verify-backend.sh` 在本 worktree 为 `227 passed, 1 skipped`；confirmation/coordinator 聚焦为 `22 passed`；synthetic smoke 为 `1 passed, 1 skipped`；Worker 确认与检测聚焦为 `9 passed`，各命令均有一条既有 Starlette/httpx 弃用警告。主检出与本 worktree 均无未跟踪的 `.local-ai/venv/bin/python` 可复用；未运行 bootstrap，因此未创建模型、云资源或样本媒体。
 - 2026-08-04：Task 2 最终独立审查通过（0 Critical / 0 Important / 0 Minor），代码状态改为“待用户验收”。尚未推送、创建 PR 或合并；完整 `verify-local-ai.sh` 仍因缺少本地忽略运行时而未执行，真实样本验收保留给 Task 4。
 - 2026-08-04：用户验收 Task 2，正式标记为“已完成”。草稿 PR #34 已于同日合并至 `main`，合并提交 `8c70e8e`。Task 3（iOS 确认界面）尚未开始，需单独确认范围。
+- 2026-08-04：用户确认开始 Task 3。范围为 iPhone 17 Pro Max（iOS 26.5）的全屏身份确认页、受保护图片加载、稳定幂等决定提交与轮询恢复；不修改后端、模型、云端、候选布局或 Analysis Package v1。已确认设计与实施计划分别为 `docs/superpowers/specs/2026-08-04-reid-task3-ios-confirmation-design.md`、`docs/superpowers/plans/2026-08-04-reid-task3-ios-confirmation.md`。
+- 2026-08-05：Task 3 首个可验证检查点完成：客户端可读取/校验确认载荷、提交 `same`/`different` 的稳定幂等请求；模型在 `awaitingConfirmation` 时停止轮询并全屏呈现确认页，成功后恢复轮询，失败时保留页内重试。指定 iPhone 17 Pro Max（iOS 26.5）运行 `verify-ios.sh` 退出码 0；Task 仍进行中，尚未进行独立审查、PR 或验收。
 
 #### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 

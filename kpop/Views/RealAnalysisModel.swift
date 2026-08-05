@@ -8,6 +8,7 @@ enum RealAnalysisState: Equatable {
     case awaitingTarget([DancerCandidate])
     case selecting(String)
     case analyzing(AnalysisJobSnapshot)
+    case awaitingIdentityConfirmation(IdentityConfirmation)
     case resultReady(AnalysisResultDescriptor)
     case failed(String, recoverable: Bool)
 }
@@ -74,6 +75,27 @@ final class RealAnalysisModel {
         }
     }
 
+    func confirmIdentity(_ decision: IdentityDecisionValue, project: DanceProject) async -> Bool {
+        guard let rawJobID = project.remoteJobId, let jobID = UUID(uuidString: rawJobID), case .awaitingIdentityConfirmation(let confirmation) = state else {
+            state = .failed("身份确认已失效，请重新读取状态。", recoverable: true)
+            return false
+        }
+        state = .analyzing(AnalysisJobSnapshot(id: jobID, projectID: project.id, state: .queued, progress: 0))
+        do {
+            _ = try await service.submitIdentityConfirmation(jobID: jobID, confirmation: confirmation, decision: decision)
+            await poll(jobID: jobID, project: project)
+            return true
+        } catch is CancellationError { return false
+        } catch let error as AnalysisServiceError {
+            state = .awaitingIdentityConfirmation(confirmation)
+            _ = error
+            return false
+        } catch {
+            state = .awaitingIdentityConfirmation(confirmation)
+            return false
+        }
+    }
+
     private func poll(jobID: UUID, project: DanceProject) async {
         while !Task.isCancelled {
             do {
@@ -86,9 +108,13 @@ final class RealAnalysisModel {
                     let candidates = try await service.candidates(jobID: jobID)
                     state = .awaitingTarget(candidates)
                     return
-                case .queued, .analyzing, .awaitingConfirmation, .importing:
+                case .queued, .analyzing, .importing:
                     state = .analyzing(snapshot)
                     try await pause()
+                case .awaitingConfirmation:
+                    let confirmation = try await service.identityConfirmation(jobID: jobID)
+                    state = .awaitingIdentityConfirmation(confirmation)
+                    return
                 case .resultReady, .completed:
                     let result = try await service.result(jobID: jobID)
                     let localRecord = try await importPackageIfConfigured(result: result, project: project)

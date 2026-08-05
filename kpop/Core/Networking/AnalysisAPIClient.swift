@@ -35,6 +35,21 @@ nonisolated struct AnalysisResultDTO: Decodable, Equatable, Sendable {
     let contentPath: String
 }
 
+nonisolated enum IdentityDecisionValue: String, Codable, Equatable, Sendable {
+    case same
+    case different
+}
+
+nonisolated struct IdentityConfirmationDTO: Decodable, Equatable, Sendable {
+    let confirmationId: String
+    let kind: String
+    let previousImagePath: String
+    let candidateImagePath: String
+    let previousInterval: AnalysisAppearanceIntervalDTO
+    let candidateInterval: AnalysisAppearanceIntervalDTO
+    let candidateClusterId: String
+}
+
 nonisolated struct AnalysisAPIClient: Sendable {
     let configuration: JobsAPIConfiguration
     let transport: HTTPTransport
@@ -79,6 +94,22 @@ nonisolated struct AnalysisAPIClient: Sendable {
         let result: AnalysisResultDTO = try await perform(request, successCodes: [200])
         _ = try contentURL(jobID: jobID, relativePath: result.contentPath)
         return result
+    }
+
+    func identityConfirmation(jobID: UUID) async throws -> IdentityConfirmationDTO {
+        let request = makeRequest(path: "v1/jobs/\(jobID.uuidString)/identity-confirmation", method: "GET")
+        let confirmation: IdentityConfirmationDTO = try await perform(request, successCodes: [200])
+        _ = try contentURL(jobID: jobID, relativePath: confirmation.previousImagePath)
+        _ = try contentURL(jobID: jobID, relativePath: confirmation.candidateImagePath)
+        return confirmation
+    }
+
+    func submitIdentityConfirmation(jobID: UUID, confirmationID: String, decision: IdentityDecisionValue, idempotencyKey: String) async throws -> RemoteJob {
+        var request = makeRequest(path: "v1/jobs/\(jobID.uuidString)/identity-confirmation", method: "POST")
+        request.httpBody = try JSONEncoder().encode(SubmitIdentityConfirmationDTO(confirmationId: confirmationID, decision: decision))
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        return try await perform(request, successCodes: [200, 201, 202])
     }
 
     func downloadContent(jobID: UUID, relativePath: String) async throws -> Data {
@@ -202,6 +233,11 @@ nonisolated struct AnalysisAPIClient: Sendable {
 
 nonisolated private struct SelectTargetDTO: Encodable {
     let candidateId: String
+}
+
+nonisolated private struct SubmitIdentityConfirmationDTO: Encodable {
+    let confirmationId: String
+    let decision: IdentityDecisionValue
 }
 
 nonisolated private struct APIErrorEnvelope: Decodable {
