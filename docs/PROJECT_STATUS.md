@@ -15,7 +15,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 当前阶段与状态
 
-**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID Task 1（身份簇）与 Task 2（确认状态机与可恢复 checkpoint）已完成。本轮不启用云端 GPU、账号或新模型权重。**
+**阶段：Stage 5B 云端数据基础已完成；Stage 6 Task 9 与竖屏全身跟随已完成待人工验收。保守混合 Re-ID Task 1（身份簇）、Task 2（确认状态机与可恢复 checkpoint）、Task 3（iOS 确认界面）和 Task 4（真实本地验收）均已完成。本轮不启用云端 GPU、账号或新模型权重。**
 
 用户决定测试版 Demo 暂不实现任何面向用户的账号登录，并将下一阶段改为本地真实 AI 最小闭环。Stage 6 先在 Mac 运行真实 Worker，用一条 `82MAJOR Trophy` 视频完成“检测候选舞者 -> 用户选人 -> 目标追踪与骨架 -> 动作分段 -> App 成品播放器”的闭环；本地验收后再迁移同一 Worker 到 Google Cloud。
 
@@ -57,13 +57,13 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ### 当前进行中的任务
 
-#### Task：保守混合 Re-ID（Task 3 iOS 确认界面进行中）
+#### Task：保守混合 Re-ID（Task 4 已完成）
 
 - 目标：将同一舞者的轨迹碎片保守合并，快速位移、长遮挡或换位不确定时暂停并请求用户确认，避免错误锁定其他舞者。
 - 技术边界：仅使用现有 RTMDet-m、ByteTrack 和 RTMPose 的全身外观/姿态/时序描述；不引入新模型、云端、账号或 Analysis Package schema 变化。
 - 数据流：片段描述 -> 身份簇 -> 高置信自动合并或 `awaitingConfirmation` -> 用户 `same` / `different` 决定 -> 从检查点恢复或完整画面回退。
 - 成本与隐私：仅本机 CPU 与当前 Job 临时目录；不保留人脸嵌入、不上传、不训练、不提交用户媒体。
-- 验收：真实 `Hype Boy` 视频中候选不再暴露大量碎片；所选舞者轨迹覆盖至少 80% 可见时长；不确定时必须确认或回退。
+- 验收：真实本地样本中候选不再暴露大量碎片；所选舞者轨迹覆盖至少 80% 可见时长；不确定时必须确认或回退。
 - 规格：`docs/superpowers/specs/2026-08-04-conservative-hybrid-reid-design.md`。
 - 实施计划：`docs/superpowers/plans/2026-08-04-conservative-hybrid-reid.md`。计划拆为身份簇、可恢复确认状态机、iOS 确认界面、真实本地验收四个独立 PR；真实视频验收仅在 Task 4 执行。
 - 2026-08-04：用户确认开始 Task 1。当前范围仅为本地 Worker 的确定性身份片段、保守聚类、候选上限与代表图选择；FastAPI 状态机、iOS 界面、云端、账号及 Analysis Package v1 均不在本 Task 修改范围。
@@ -75,7 +75,11 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-08-05：Task 3 首个可验证检查点完成：客户端可读取/校验确认载荷、提交 `same`/`different` 的稳定幂等请求；模型在 `awaitingConfirmation` 时停止轮询并全屏呈现确认页，成功后恢复轮询，失败时保留页内重试。指定 iPhone 17 Pro Max（iOS 26.5）运行 `verify-ios.sh` 退出码 0；Task 仍进行中，尚未进行独立审查、PR 或验收。
 - 2026-08-05：Task 3 代码完成、待用户验收。全屏确认页具备受保护图片/占位、时间范围、same/different 可访问控件、提交禁用与取消/传输失败后重试；仅在 UI 测试启动参数下提供内存 fixture。最终 `verify-ios.sh`（iPhone 17 Pro Max，iOS 26.5）退出码 0，`git diff --check` 通过；尚未推送、创建 PR 或合并。
 - 2026-08-05：Task 3 最终独立审查通过（0 Critical / 0 Important / 0 Minor）。UI fixture 经 `RootView -> DancerPickView -> fullScreenCover` 覆盖两张占位、失败提示与按钮恢复；`verify-ios.sh` 的测试、Staging 构建与 Release Simulator 构建均退出码 0。状态保持“待用户验收”，未推送、创建 PR 或合并。
-- 2026-08-05：用户验收 Task 3，正式标记为“已完成”。草稿 PR #36 已于同日合并至 `main`，合并提交 `8bd14cf`。Task 4（真实本地验收）尚未开始，需单独确认范围。
+- 2026-08-05：用户验收 Task 3，正式标记为“已完成”。草稿 PR #36 已于同日合并至 `main`，合并提交 `8bd14cf`。
+- 2026-08-05：用户确认开始 Task 4。范围仅为本地真实样本的非敏感自动验收指标、脚本化 `same` / `different` 确认链和持久验收记录；不会提交样本媒体、结果包、模型、令牌或本地工作区，也不会启用云端、账号或新模型。Task 状态为“进行中”；仅当规定自动门禁实际通过后才可改为“待用户验收”。
+- 2026-08-05：Task 4 初始运行时预检发现 `backend/.venv/bin/python` 缺失、系统 Python 没有 `pytest`；随后恢复忽略的本地运行时（固定 `setuptools 80.10.2`）并完成聚焦 smoke RED/GREEN：先因新增 `_acceptance_metrics` 未定义而失败，最小实现后为 `4 passed, 1 skipped`，另有 1 条既有 Starlette/httpx 弃用警告。首次真实 smoke 使用默认 stride 6，目标 CPU Worker 在轮询边界内仍为 `analyzing`，没有错误或 ZIP；未将其误报为通过。
+- 2026-08-14：根因确认是 180 秒源视频在 CPU stride 6 下的目标姿态吞吐超出验收窗口。沿用本地 Demo 的既有 `LOCAL_AI_FRAME_STRIDE=30` 受控复测通过：真实 smoke `1 passed in 155.07s`，身份簇数 `8`（上限 `8`）、所选簇可见时长 `63.0s`、已接受片段覆盖率 `1.0`、确认边界 `99`、结果 ZIP 精确为五个 v1 成员；每个遇到的确认边界均在 ZIP 产生前暂停，且 pending 及后续 fragment 没有提前生成 pose checkpoint，并经 `same` 恢复。脚本化 `same` 和 `different` 均已生成 hash-validated v1 ZIP。完整门禁：本地 AI `107 passed`、后端 `231 passed, 1 skipped`、iPhone 17 iOS 26.5 Simulator 的测试与 Staging/Release 构建退出码均为 0。Task 状态改为“待用户验收”；真实媒体 Simulator 的私有裁切、same 恢复与 different 完整画面回退仍待人工视觉确认，不能由 fixture UI 测试替代。
+- 2026-08-14：用户验收 Task 4，正式标记为“已完成”。真实媒体的 Simulator 人工视觉确认仍作为已知的非自动验证项保留，不宣称已执行。
 
 #### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 
@@ -345,7 +349,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - **不可逆配置，已确认：** Identity Platform 项目配置初始化后不能删除；Terraform 使用 `prevent_destroy`，且本阶段不开放 Email、Phone、Anonymous 登录。
 - **产品缺口：** iOS 尚未接入 Sign in with Apple 和生产 Firebase Token，因此当前 App 不能完成正式云端登录上传流程。
 - **功能缺口：** 完整 30fps 精度、身份不确定确认、音乐语义段落和云端 GPU 迁移仍未完成；Task 9 的 iOS/真机视觉、低置信度和离线重启检查仍待人工验收。
-- **已缓解但未闭环：** 2026-08-04 真实 `Hype Boy` 视频验证发现追踪器仅保留结束时活跃轨迹，候选与姿态曾只覆盖约 177--180 秒。现已归档结束轨迹并用于候选/目标分析，候选首段扩展至 36.8--92.8 秒、姿态帧从 17 提升至 278；快速位移、长遮挡和换位后的同一人重识别仍未实现，候选碎片会增多，不能宣称全片持续锁定。
+- **已缓解但未闭环：** 2026-08-04 真实本地样本验证发现追踪器仅保留结束时活跃轨迹，候选与姿态曾只覆盖约 177--180 秒。现已归档结束轨迹并用于候选/目标分析，候选首段扩展至 36.8--92.8 秒、姿态帧从 17 提升至 278；快速位移、长遮挡和换位后的同一人重识别仍未实现，候选碎片会增多，不能宣称全片持续锁定。
 - **阶段变更：** 用户登录与正式云上传联调已延期；Stage 6 先解决真实 AI 成品闭环。
 - **已缓解：** RTMDet-m/RTMPose-m 已在 Apple Silicon 完成 CPU 单帧真实推理；MPS 未通过整组门禁，当前稳定设备固定为 CPU，后续性能验收不能假设 GPU 加速。
 - **已缓解：** Task 2 的 owner/path 隔离、路径穿越、并发发布、原子写入、重启恢复、非有限浮点数和 Job CAS 已有自动化回归保护；当前仅完成本地文件实现，尚未通过 API 暴露。
@@ -387,7 +391,7 @@ Stage 6 Task 9 自动实现和门禁已完成；下一步是用户在 Xcode/真�
 
 ## 最后更新时间与对应 Git 提交
 
-- 最后更新：2026-08-04（Asia/Tokyo，保守混合 Re-ID Task 1 已验收）。
+- 最后更新：2026-08-14（Asia/Tokyo，保守混合 Re-ID Task 4 已由用户验收）。
 - 保守混合 Re-ID Task 1：用户于 2026-08-04 验收；Draft PR #32 仅包含 Worker 身份簇、候选聚合、内部工件与回归测试。
 - 已部署 Git 提交：`21161a288e73ebc40a5716b01db1d1f8210037a7`。
 - Cloud Run scaling 收敛修复提交：`57a7554`，PR #2 合并提交 `636ed3d`。

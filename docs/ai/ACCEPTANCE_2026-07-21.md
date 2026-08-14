@@ -66,3 +66,42 @@ automatically verified by this record:
 Task 9 is ready for GitHub review and user acceptance. After the PR is merged,
 the remaining work is manual Xcode/real-iPhone product acceptance, not another
 automatic Task 9 implementation cycle.
+
+## Conservative hybrid Re-ID Task 4 local acceptance
+
+This section records the later Re-ID acceptance independently from Task 9.
+It intentionally omits the source-media title, filename, absolute path,
+candidate crops, local workspace paths, and pairing token.
+
+### Automated verification
+
+- Date: 2026-08-14, Asia/Tokyo.
+- Environment: macOS local CPU; Python 3.11.15; FFmpeg 8.1.2; RTMDet-m,
+  ByteTrack, and RTMPose-m from the existing approved local manifest; no cloud
+  GPU, account, paid service, or additional model was enabled.
+- Real smoke: `STAGE_LAB_ACCEPTANCE_VIDEO=<local ignored source>
+  LOCAL_AI_FRAME_STRIDE=30 backend/.venv/bin/python -m pytest
+  backend/tests/smoke/test_local_ai_real_chain.py::test_real_video_upload_candidates_restart_and_target_selection -q -s`
+  passed in 155.07s. It reported 8 identity clusters (cap 8), 63.0 seconds of
+  selected-cluster visible duration, 100% accepted-segment pose coverage, 99
+  confirmation-boundary fragments, and exactly `manifest.json`,
+  `pose-track.json`, `spotlight-track.json`, `timeline.json`, and
+  `confidence.json` in the v1 ZIP. The harness asserted every encountered
+  ambiguous boundary paused before a ZIP existed, then submitted `same` to
+  resume from its checkpoint.
+- Scripted protected-API smoke covers both `same` and `different`, each reaching
+  a hash-validated five-member v1 ZIP without video or model bytes.
+- `./scripts/verify-local-ai.sh`: 107 worker tests passed; CPU detector and
+  pose probes passed. Model-library deprecation warnings were emitted.
+- `./scripts/verify-backend.sh`: 231 passed, 1 skipped; one existing
+  Starlette/httpx deprecation warning; Terraform format gate passed.
+- `./scripts/verify-ios.sh`: iPhone 17 Simulator on iOS 26.5 ran the unit and
+  UI suites successfully (including the identity-confirmation fixture) and
+  completed Staging and Release Simulator builds.
+
+### Remaining manual Simulator visual check
+
+- [ ] Run the real local video through the iPhone 17 Pro Max iOS 26.5 Simulator
+  and visually confirm private crops, `same` resumption, and `different`
+  complete-frame fallback. Automated Simulator tests do not substitute for this
+  real-media visual observation.
