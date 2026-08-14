@@ -13,9 +13,26 @@
   full-30fps pose fidelity. A product-quality performance/precision baseline
   remains future work.
 
-## Manual Simulator visual confirmation remains unexecuted
+## Manual Simulator visual confirmation is blocked by real app-path input
 
-- **Status:** pending after the automated gate is available.
-- **Impact:** automated iPhone Simulator tests cannot substitute for a manual
-  run of the real local video that visually confirms private crops, `same`
-  tracking resumption, and `different` complete-frame fallback.
+- **Status:** observed on 2026-08-14; the prescribed iPhone 17 Pro Max iOS
+  26.5 Simulator run cannot reach the confirmation UI with its actual managed
+  upload.
+- **Evidence:** the local app imported the ignored real video from Photos,
+  produced the managed compressed upload, and received 8 displayed candidate
+  clusters. The persisted worker output contained 124 fragments, every
+  displayed candidate cluster contained one fragment, and the identity
+  decisions contained zero `awaiting_confirmation` boundaries. Target analysis
+  therefore correctly reached `resultReady` without presenting a confirmation
+  sheet.
+- **Impact:** the existing direct-source automated smoke does not establish
+  that the real iOS managed-upload path has an ambiguous identity boundary.
+  Consequently this run cannot visually confirm private crops, `same` tracking
+  resumption, or `different` complete-frame fallback. Fixture UI tests and
+  scripted API decisions remain distinct, non-substituting evidence.
+- **Next:** reopen a scoped Re-ID acceptance task only after choosing one of
+  two product-level approaches: use a controlled privacy-safe acceptance asset
+  that naturally creates an ambiguous boundary, or change the conservative
+  clustering/sampling behavior and re-baseline its false-merge risk. Do not
+  manufacture a confirmation in the runtime and present it as natural Worker
+  behavior.

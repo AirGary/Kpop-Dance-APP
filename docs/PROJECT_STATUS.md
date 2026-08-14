@@ -80,6 +80,7 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 - 2026-08-05：Task 4 初始运行时预检发现 `backend/.venv/bin/python` 缺失、系统 Python 没有 `pytest`；随后恢复忽略的本地运行时（固定 `setuptools 80.10.2`）并完成聚焦 smoke RED/GREEN：先因新增 `_acceptance_metrics` 未定义而失败，最小实现后为 `4 passed, 1 skipped`，另有 1 条既有 Starlette/httpx 弃用警告。首次真实 smoke 使用默认 stride 6，目标 CPU Worker 在轮询边界内仍为 `analyzing`，没有错误或 ZIP；未将其误报为通过。
 - 2026-08-14：根因确认是 180 秒源视频在 CPU stride 6 下的目标姿态吞吐超出验收窗口。沿用本地 Demo 的既有 `LOCAL_AI_FRAME_STRIDE=30` 受控复测通过：真实 smoke `1 passed in 155.07s`，身份簇数 `8`（上限 `8`）、所选簇可见时长 `63.0s`、已接受片段覆盖率 `1.0`、确认边界 `99`、结果 ZIP 精确为五个 v1 成员；每个遇到的确认边界均在 ZIP 产生前暂停，且 pending 及后续 fragment 没有提前生成 pose checkpoint，并经 `same` 恢复。脚本化 `same` 和 `different` 均已生成 hash-validated v1 ZIP。完整门禁：本地 AI `107 passed`、后端 `231 passed, 1 skipped`、iPhone 17 iOS 26.5 Simulator 的测试与 Staging/Release 构建退出码均为 0。Task 状态改为“待用户验收”；真实媒体 Simulator 的私有裁切、same 恢复与 different 完整画面回退仍待人工视觉确认，不能由 fixture UI 测试替代。
 - 2026-08-14：用户验收 Task 4，正式标记为“已完成”。真实媒体的 Simulator 人工视觉确认仍作为已知的非自动验证项保留，不宣称已执行。
+- 2026-08-14：按后续验证计划在 iPhone 17 Pro Max（iOS 26.5）Simulator 走完真实 iOS 导入、受管压缩上传、候选选择与目标分析。App 路径得到 8 个候选簇/124 个片段，但没有任何 `awaiting_confirmation` 决策，因此正确直接进入 `resultReady`，未显示确认页。此结果不能证明私有裁切、`same` 恢复或 `different` 全画面回退；根因和重新开启验收前所需的产品选择已记录在 `docs/KNOWN_ISSUES.md`。不将模拟或运行时注入误报为真实 Worker 行为。
 
 #### Task：Stage 6 Task 4 真实候选舞者（真实样本门禁已通过）
 

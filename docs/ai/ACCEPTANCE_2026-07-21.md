@@ -101,7 +101,12 @@ candidate crops, local workspace paths, and pairing token.
 
 ### Remaining manual Simulator visual check
 
-- [ ] Run the real local video through the iPhone 17 Pro Max iOS 26.5 Simulator
-  and visually confirm private crops, `same` resumption, and `different`
-  complete-frame fallback. Automated Simulator tests do not substitute for this
-  real-media visual observation.
+- [ ] 2026-08-14 attempted the real local video through the iPhone 17 Pro Max
+  iOS 26.5 Simulator. The actual iOS managed-upload path produced 8 candidate
+  clusters from 124 fragments, with zero `awaiting_confirmation` decisions, so
+  it correctly reached `resultReady` without displaying the confirmation UI.
+  This does not visually confirm private crops, `same` resumption, or
+  `different` complete-frame fallback; automated Simulator/fixture and
+  scripted-API checks do not substitute. See `docs/KNOWN_ISSUES.md` for the
+  evidence and the required product decision before reopening this acceptance
+  check.
