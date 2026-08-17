@@ -11,6 +11,7 @@ import pytest
 from stage_lab_analysis.runtime_probe import (
     ModelManifestError,
     PythonVersionError,
+    RuntimeCapabilities,
     RuntimeProbeError,
     _is_supported_mps_failure,
     choose_device,
@@ -35,6 +36,19 @@ def test_python_runtime_requires_exactly_python_311() -> None:
 
     with pytest.raises(PythonVersionError, match="Python 3.11"):
         require_python_311((3, 12, 0))
+
+
+def test_runtime_capabilities_preserve_legacy_constructor_forms() -> None:
+    keyword = RuntimeCapabilities(
+        device="cpu",
+        detector_ready=True,
+        pose_ready=True,
+        ffmpeg_version="ffmpeg version",
+    )
+    positional = RuntimeCapabilities("cpu", True, True, "ffmpeg version")
+
+    assert keyword.reid_ready is False
+    assert positional.reid_ready is False
 
 
 @pytest.mark.parametrize(
@@ -80,6 +94,29 @@ def test_model_manifest_rejects_unapproved_or_noncommercial_license(
 
     with pytest.raises(ModelManifestError, match="approved commercial license"):
         load_model_manifest(manifest_path)
+
+
+def test_reid_manifest_top_level_provenance_pins_the_model_yml_hash() -> None:
+    manifest = load_model_manifest(
+        REPOSITORY_ROOT / "backend/workers/analysis/model-manifest.json"
+    )
+    reid = next(
+        model
+        for model in manifest["models"]
+        if isinstance(model, dict) and model.get("role") == "reid"
+    )
+
+    assert reid["sourceUrl"] == (
+        "https://raw.githubusercontent.com/openvinotoolkit/open_model_zoo/"
+        "af810de42bcf460a18610481f639dcdc86249e69/"
+        "models/intel/person-reidentification-retail-0277/model.yml"
+    )
+    assert reid["sha256"] == (
+        "d03a525823cbf926b9b23430fbb1e34ba08978e0ea3db20ad304aba1a4f4ee4d"
+    )
+    assert reid["provenanceLocalPath"] == (
+        "person-reidentification-retail-0277-model.yml"
+    )
 
 
 def test_choose_device_uses_mps_only_when_both_model_probes_pass() -> None:

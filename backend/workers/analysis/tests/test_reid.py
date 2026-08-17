@@ -34,14 +34,21 @@ def _model_assets(tmp_path: Path) -> tuple[Path, Path, str, str]:
     )
 
 
-def _embedder(tmp_path: Path, *, values: tuple[float, ...] = (3.0, 4.0)) -> OpenVINOReIDEmbedder:
+def _embedder(
+    tmp_path: Path,
+    *,
+    values: tuple[float, ...] = (3.0, 4.0),
+    infer=None,
+    device: str = "CPU",
+) -> OpenVINOReIDEmbedder:
     xml, binary, xml_hash, binary_hash = _model_assets(tmp_path)
     return OpenVINOReIDEmbedder(
         model_xml=xml,
         model_bin=binary,
         expected_xml_sha256=xml_hash,
         expected_bin_sha256=binary_hash,
-        infer=lambda _: values,
+        infer=infer or (lambda _: values),
+        device=device,
     )
 
 
@@ -86,6 +93,34 @@ def test_embedder_refuses_tampered_model_asset_before_inference(tmp_path: Path) 
         embedder.embed(frame, NormalizedBox(0.1, 0.1, 0.8, 0.8))
 
 
+@pytest.mark.parametrize(
+    "infer",
+    [
+        lambda _: (_ for _ in ()).throw(RuntimeError("inference failed")),
+        lambda _: None,
+    ],
+    ids=["execution-error", "invalid-output"],
+)
+def test_embedder_converts_inference_failures_to_missing_embedding(
+    tmp_path: Path,
+    infer,
+) -> None:
+    embedder = _embedder(tmp_path, infer=infer)
+    textured = (np.indices((160, 80)).sum(axis=0) % 2 * 255).astype(np.uint8)
+    frame = np.repeat(textured[..., None], 3, axis=2)
+
+    assert embedder.embed(frame, NormalizedBox(0.1, 0.1, 0.8, 0.8)) is None
+
+
+@pytest.mark.parametrize("device", ["GPU", "AUTO", "mps"])
+def test_embedder_rejects_any_non_cpu_openvino_device(
+    tmp_path: Path,
+    device: str,
+) -> None:
+    with pytest.raises(ValueError, match="CPU"):
+        _embedder(tmp_path, device=device)
+
+
 def test_cpu_probe_requires_individually_verified_xml_and_bin_assets(tmp_path: Path) -> None:
     xml, binary, xml_hash, binary_hash = _model_assets(tmp_path)
     manifest = tmp_path / "model-manifest.json"
@@ -100,6 +135,7 @@ def test_cpu_probe_requires_individually_verified_xml_and_bin_assets(tmp_path: P
                         "sha256": xml_hash,
                         "license": "Apache-2.0",
                         "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+                        "provenanceLocalPath": "model.yml",
                         "assets": [
                             {
                                 "role": "xml",

@@ -39,10 +39,11 @@
       "name": "OpenVINO person-reidentification-retail-0277",
       "version": "2023.0 FP32",
       "sourceUrl": "https://raw.githubusercontent.com/openvinotoolkit/open_model_zoo/af810de42bcf460a18610481f639dcdc86249e69/models/intel/person-reidentification-retail-0277/model.yml",
-      "sha256": "5adcc4ff114737479ee16c1a7f525a7e8e1487d86c7ee7a1b50fcd68ee71f596",
+      "sha256": "d03a525823cbf926b9b23430fbb1e34ba08978e0ea3db20ad304aba1a4f4ee4d",
       "license": "Apache-2.0",
       "licenseUrl": "https://raw.githubusercontent.com/openvinotoolkit/open_model_zoo/af810de42bcf460a18610481f639dcdc86249e69/LICENSE",
       "provenanceUrl": "https://github.com/openvinotoolkit/open_model_zoo/blob/af810de42bcf460a18610481f639dcdc86249e69/models/intel/person-reidentification-retail-0277/README.md",
+      "provenanceLocalPath": "person-reidentification-retail-0277-model.yml",
       "assets": [
         {
           "role": "xml",

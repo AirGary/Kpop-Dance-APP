@@ -50,11 +50,13 @@ class OpenVINOReIDEmbedder:
         min_height: int = 32,
         min_quality: float = 0.03,
     ) -> None:
+        if device.upper() != "CPU":
+            raise ValueError("OpenVINO Re-ID supports only the CPU device")
         self._model_xml = Path(model_xml)
         self._model_bin = Path(model_bin)
         self._expected_xml_sha256 = expected_xml_sha256
         self._expected_bin_sha256 = expected_bin_sha256
-        self._device = device
+        self._device = "CPU"
         self._provided_infer = infer
         self._inference: Callable[[Any], Sequence[float]] | None = None
         self._min_width = min_width
@@ -69,8 +71,15 @@ class OpenVINOReIDEmbedder:
         if quality < self._min_quality:
             return None
 
-        values = tuple(float(value) for value in self._load_inference()(_prepare(crop)))
-        norm = math.sqrt(sum(value * value for value in values))
+        try:
+            values = tuple(
+                float(value) for value in self._load_inference()(_prepare(crop))
+            )
+            norm = math.sqrt(sum(value * value for value in values))
+        except ModelManifestError:
+            raise
+        except Exception:
+            return None
         if not math.isfinite(norm) or norm <= 0.0:
             return None
         return PersonEmbedding(tuple(value / norm for value in values), quality)

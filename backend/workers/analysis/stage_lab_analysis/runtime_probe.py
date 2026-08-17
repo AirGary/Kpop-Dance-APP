@@ -49,8 +49,8 @@ class RuntimeCapabilities:
     device: Device
     detector_ready: bool
     pose_ready: bool
-    reid_ready: bool
     ffmpeg_version: str
+    reid_ready: bool = False
 
 
 def require_python_311(version_info: Sequence[int]) -> None:
@@ -83,6 +83,11 @@ def load_model_manifest(path: Path) -> dict[str, object]:
                 f"models[{index}] requires an approved commercial license"
             )
         if model.get("role") == "reid":
+            provenance_path = model.get("provenanceLocalPath")
+            if not isinstance(provenance_path, str) or not provenance_path.strip():
+                raise ModelManifestError(
+                    f"models[{index}] requires provenanceLocalPath"
+                )
             assets = model.get("assets")
             if not isinstance(assets, list):
                 raise ModelManifestError(f"models[{index}] requires assets")
@@ -256,6 +261,11 @@ def download_manifest_assets(manifest_path: Path, model_root: Path) -> None:
         assert isinstance(model, dict)
         assets = model.get("assets")
         if isinstance(assets, list):
+            _download_verified(
+                str(model["sourceUrl"]),
+                model_root / str(model["provenanceLocalPath"]),
+                str(model["sha256"]),
+            )
             for asset in assets:
                 assert isinstance(asset, dict)
                 _download_verified(
