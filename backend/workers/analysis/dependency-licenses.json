@@ -570,6 +570,42 @@
       "version": "4.11.0.86"
     },
     {
+      "license": "Apache-2.0",
+      "licenseEvidence": [
+        {
+          "sha256": "616cdf8298a725e5a31a01049e8cf2b0cb8e6b9f90e523c75dbfe0af2834f592",
+          "type": "reviewed-artifact"
+        },
+        {
+          "path": "openvino-2026.2.1.dist-info/licenses/LICENSE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ],
+      "name": "openvino",
+      "reviewStatus": "approved-for-local-technical-demo",
+      "sha256": "616cdf8298a725e5a31a01049e8cf2b0cb8e6b9f90e523c75dbfe0af2834f592",
+      "sourceUrl": "https://files.pythonhosted.org/packages/8a/b5/726e3028016bdbbfe3e0f939666df04a6ba2a0ff61619b5ed07834bef89b/openvino-2026.2.1-21919-cp311-cp311-macosx_11_0_arm64.whl",
+      "version": "2026.2.1"
+    },
+    {
+      "license": "Apache-2.0",
+      "licenseEvidence": [
+        {
+          "sha256": "bcb667e83a44f202ecf4cfa49281715c6d7e21499daec04ff853b7f964833599",
+          "type": "reviewed-artifact"
+        },
+        {
+          "path": "openvino_telemetry-2025.2.0.dist-info/LICENSE",
+          "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6"
+        }
+      ],
+      "name": "openvino-telemetry",
+      "reviewStatus": "approved-for-local-technical-demo",
+      "sha256": "bcb667e83a44f202ecf4cfa49281715c6d7e21499daec04ff853b7f964833599",
+      "sourceUrl": "https://files.pythonhosted.org/packages/3b/ac/5ab0ca0aa269ad3c73f7bfc3801b10e5f56f75a31bf68c1ae8bd51cf70a4/openvino_telemetry-2025.2.0-py3-none-any.whl",
+      "version": "2025.2.0"
+    },
+    {
       "license": "Apache-2.0 OR BSD-2-Clause",
       "licenseEvidence": [
         {

@@ -56,7 +56,8 @@ offline=(--no-index --find-links "$package_root" -c "$constraints")
   --no-build-isolation mmcv==2.1.0 --no-cache-dir
 "$virtual_environment/bin/python" -m pip install "${offline[@]}" \
   mmengine==0.10.7 mmdet==3.3.0 mmpose==1.3.2 \
-  opencv-python-headless==4.11.0.86 numpy==1.26.4 pydantic==2.13.4 pytest==9.1.1
+  opencv-python-headless==4.11.0.86 openvino==2026.2.1 openvino-telemetry==2025.2.0 \
+  numpy==1.26.4 pydantic==2.13.4 pytest==9.1.1
 "$virtual_environment/bin/python" -m pip install --no-build-isolation --no-deps -e "$worker_root"
 "$virtual_environment/bin/python" -m pip check
 "$virtual_environment/bin/python" -m stage_lab_analysis.runtime_probe download \

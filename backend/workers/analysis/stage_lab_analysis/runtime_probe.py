@@ -23,6 +23,12 @@ REQUIRED_MODEL_FIELDS = (
     "license",
     "licenseUrl",
 )
+REQUIRED_MODEL_ASSET_FIELDS = (
+    "role",
+    "sourceUrl",
+    "localPath",
+    "sha256",
+)
 APPROVED_MODEL_LICENSES = frozenset({"Apache-2.0"})
 
 
@@ -43,6 +49,7 @@ class RuntimeCapabilities:
     device: Device
     detector_ready: bool
     pose_ready: bool
+    reid_ready: bool
     ffmpeg_version: str
 
 
@@ -75,6 +82,40 @@ def load_model_manifest(path: Path) -> dict[str, object]:
             raise ModelManifestError(
                 f"models[{index}] requires an approved commercial license"
             )
+        if model.get("role") == "reid":
+            assets = model.get("assets")
+            if not isinstance(assets, list):
+                raise ModelManifestError(f"models[{index}] requires assets")
+            assets_by_role: dict[str, dict[str, object]] = {}
+            for asset_index, asset in enumerate(assets):
+                if not isinstance(asset, dict):
+                    raise ModelManifestError(
+                        f"models[{index}].assets[{asset_index}] must be an object"
+                    )
+                for field in REQUIRED_MODEL_ASSET_FIELDS:
+                    value = asset.get(field)
+                    if not isinstance(value, str) or not value.strip():
+                        raise ModelManifestError(
+                            f"models[{index}].assets[{asset_index}] requires {field}"
+                        )
+                asset_hash = str(asset["sha256"])
+                if len(asset_hash) != 64 or any(
+                    character not in "0123456789abcdef"
+                    for character in asset_hash.lower()
+                ):
+                    raise ModelManifestError(
+                        f"models[{index}].assets[{asset_index}] sha256 must be 64 hexadecimal characters"
+                    )
+                asset_role = str(asset["role"])
+                if asset_role in assets_by_role:
+                    raise ModelManifestError(
+                        f"models[{index}] duplicates reid asset role {asset_role}"
+                    )
+                assets_by_role[asset_role] = asset
+            if set(assets_by_role) != {"xml", "bin"}:
+                raise ModelManifestError(
+                    f"models[{index}] requires distinct reid xml and bin assets"
+                )
 
     return manifest
 
@@ -133,6 +174,19 @@ def resolve_model_checkpoint(
             f"checkpoint checksum mismatch: {checkpoint.name}"
         )
     return checkpoint
+
+
+def resolve_model_asset(
+    asset: dict[str, object],
+    *,
+    model_root: Path,
+) -> Path:
+    path = model_root / str(asset["localPath"])
+    if not path.is_file():
+        raise ModelManifestError(f"model asset is missing: {path.name}")
+    if _sha256(path) != str(asset["sha256"]):
+        raise ModelManifestError(f"model asset checksum mismatch: {path.name}")
+    return path
 
 
 def validate_detector_boxes(boxes) -> None:
@@ -200,6 +254,16 @@ def download_manifest_assets(manifest_path: Path, model_root: Path) -> None:
     manifest = load_model_manifest(manifest_path)
     for model in manifest["models"]:
         assert isinstance(model, dict)
+        assets = model.get("assets")
+        if isinstance(assets, list):
+            for asset in assets:
+                assert isinstance(asset, dict)
+                _download_verified(
+                    str(asset["sourceUrl"]),
+                    model_root / str(asset["localPath"]),
+                    str(asset["sha256"]),
+                )
+            continue
         _download_verified(
             str(model["sourceUrl"]),
             model_root / str(model["localPath"]),
@@ -291,6 +355,8 @@ class OpenMMLabProbe:
 
         frame = np.zeros((640, 640, 3), dtype=np.uint8)
         frame[80:600, 160:480] = (96, 160, 224)
+        for top in range(80, 600, 32):
+            frame[top:top + 16, 160:480] = (64, 120, 192)
         return frame
 
     def _probe_detector(self, device: Device) -> None:
@@ -319,6 +385,58 @@ class OpenMMLabProbe:
             raise RuntimeProbeError("pose estimator returned an invalid keypoint tensor")
 
 
+class OpenVINOReIDProbe:
+    """Run the approved Re-ID IR pair on CPU regardless of the Torch device."""
+
+    def __init__(
+        self,
+        manifest_path: Path,
+        model_root: Path,
+        *,
+        embedder_factory=None,
+    ) -> None:
+        manifest = load_model_manifest(manifest_path)
+        try:
+            model = next(
+                model
+                for model in manifest["models"]
+                if isinstance(model, dict) and model.get("role") == "reid"
+            )
+        except StopIteration as error:
+            raise ModelManifestError("model manifest requires role reid") from error
+        assets = {
+            str(asset["role"]): asset
+            for asset in model["assets"]
+            if isinstance(asset, dict)
+        }
+        xml_asset = assets["xml"]
+        bin_asset = assets["bin"]
+        if embedder_factory is None:
+            from .reid import OpenVINOReIDEmbedder
+
+            embedder_factory = OpenVINOReIDEmbedder
+        self._embedder = embedder_factory(
+            model_xml=resolve_model_asset(xml_asset, model_root=model_root),
+            model_bin=resolve_model_asset(bin_asset, model_root=model_root),
+            expected_xml_sha256=str(xml_asset["sha256"]),
+            expected_bin_sha256=str(bin_asset["sha256"]),
+            device="CPU",
+        )
+
+    def __call__(self) -> bool:
+        from .detection import NormalizedBox
+
+        embedding = self._embedder.embed(
+            OpenMMLabProbe._test_frame(),
+            NormalizedBox.from_pixels(160, 80, 480, 600, width=640, height=640),
+        )
+        if embedding is None:
+            raise RuntimeProbeError("reid probe returned no embedding")
+        if len(embedding.values) != 256:
+            raise RuntimeProbeError("reid probe returned an unexpected embedding dimension")
+        return True
+
+
 def run_real_probe(manifest_path: Path, model_root: Path) -> dict[str, object]:
     require_python_311(sys.version_info)
     try:
@@ -332,10 +450,13 @@ def run_real_probe(manifest_path: Path, model_root: Path) -> dict[str, object]:
         mps_available=torch.backends.mps.is_available(),
         probe=probe,
     )
+    reid_probe = OpenVINOReIDProbe(manifest_path, model_root)
+    reid_probe()
     capabilities = RuntimeCapabilities(
         device=device,
         detector_ready=True,
         pose_ready=True,
+        reid_ready=True,
         ffmpeg_version=_ffmpeg_version(),
     )
     return {
