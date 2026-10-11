@@ -54,11 +54,39 @@ class PoseEstimator(Protocol):
     def estimate(self, frame: Any, box: tuple[float, float, float, float], time_seconds: float) -> PoseFrame: ...
 
 
-_KEYPOINT_NAMES = (
+_COCO_BODY_KEYPOINT_NAMES = (
     "nose", "left_eye", "right_eye", "left_ear", "right_ear",
     "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
     "left_wrist", "right_wrist", "left_hip", "right_hip",
     "left_knee", "right_knee", "left_ankle", "right_ankle",
+)
+
+_COCO_FOOT_KEYPOINT_NAMES = (
+    "left_big_toe", "left_small_toe", "left_heel",
+    "right_big_toe", "right_small_toe", "right_heel",
+)
+
+_COCO_FACE_KEYPOINT_NAMES = tuple(f"face-{index}" for index in range(68))
+
+
+def _hand_keypoint_names(side: str) -> tuple[str, ...]:
+    return (
+        f"{side}_hand_root",
+        *(f"{side}_thumb{index}" for index in range(1, 5)),
+        *(f"{side}_forefinger{index}" for index in range(1, 5)),
+        *(f"{side}_middle_finger{index}" for index in range(1, 5)),
+        *(f"{side}_ring_finger{index}" for index in range(1, 5)),
+        *(f"{side}_pinky_finger{index}" for index in range(1, 5)),
+    )
+
+
+# MMPose CocoWholeBody metainfo order: 17 COCO body + 6 foot + 68 face + 21x2 hands.
+COCO_WHOLEBODY_KEYPOINT_NAMES = (
+    _COCO_BODY_KEYPOINT_NAMES
+    + _COCO_FOOT_KEYPOINT_NAMES
+    + _COCO_FACE_KEYPOINT_NAMES
+    + _hand_keypoint_names("left")
+    + _hand_keypoint_names("right")
 )
 
 
@@ -88,6 +116,13 @@ class RTMPoseEstimator:
         return self._model
 
     def estimate(self, frame: Any, box: tuple[float, float, float, float], time_seconds: float) -> PoseFrame:
+        from mmengine.registry import DefaultScope
+        # MMPose lazy initialization changes the global registry. Restore the
+        # caller's scope so interleaved RTMDet inference remains valid.
+        with DefaultScope.overwrite_default_scope('mmpose'):
+            return self._estimate_with_fallback(frame, box, time_seconds)
+
+    def _estimate_with_fallback(self, frame, box, time_seconds):
         try:
             return self._estimate(frame, box, time_seconds)
         except Exception as error:
@@ -110,9 +145,13 @@ class RTMPoseEstimator:
         instances = results[0].pred_instances
         points = np.asarray(instances.keypoints)[0]
         scores = np.asarray(getattr(instances, "keypoint_scores", np.ones(points.shape[:1])))[0]
+        if len(points) != len(COCO_WHOLEBODY_KEYPOINT_NAMES):
+            raise RuntimeError(
+                "RTMPose WholeBody estimator returned an unexpected keypoint count"
+            )
         keypoints = tuple(
             PoseKeypoint(
-                _KEYPOINT_NAMES[index] if index < len(_KEYPOINT_NAMES) else f"joint-{index}",
+                COCO_WHOLEBODY_KEYPOINT_NAMES[index],
                 _clamp_normalized(float(point[0]) / width),
                 _clamp_normalized(float(point[1]) / height),
                 _clamp_normalized(float(scores[index])),

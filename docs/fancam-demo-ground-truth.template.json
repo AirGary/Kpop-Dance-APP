@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "scenes": [
+    {
+      "timestampSeconds": 0.0,
+      "visibleMemberIds": ["member-01"]
+    }
+  ]
+}

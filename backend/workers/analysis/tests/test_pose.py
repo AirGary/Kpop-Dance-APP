@@ -3,6 +3,7 @@ import math
 import pytest
 
 from stage_lab_analysis.pose import (
+    COCO_WHOLEBODY_KEYPOINT_NAMES,
     PoseFrame,
     PoseKeypoint,
     SpotlightKeyframe,
@@ -47,3 +48,23 @@ def test_pose_keypoints_can_be_clamped_at_frame_edges():
 
     assert clamped.x == 0.0
     assert clamped.y == 1.0
+
+
+def test_coco_wholebody_names_preserve_all_133_documented_landmarks():
+    """WholeBody result serialization must never fall back to anonymous joints."""
+    assert len(COCO_WHOLEBODY_KEYPOINT_NAMES) == 133
+    assert COCO_WHOLEBODY_KEYPOINT_NAMES[:17] == (
+        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist", "left_hip", "right_hip",
+        "left_knee", "right_knee", "left_ankle", "right_ankle",
+    )
+    assert COCO_WHOLEBODY_KEYPOINT_NAMES[17:23] == (
+        "left_big_toe", "left_small_toe", "left_heel",
+        "right_big_toe", "right_small_toe", "right_heel",
+    )
+    assert COCO_WHOLEBODY_KEYPOINT_NAMES[23] == "face-0"
+    assert COCO_WHOLEBODY_KEYPOINT_NAMES[90] == "face-67"
+    assert COCO_WHOLEBODY_KEYPOINT_NAMES[91] == "left_hand_root"
+    assert COCO_WHOLEBODY_KEYPOINT_NAMES[112] == "right_hand_root"
+    assert COCO_WHOLEBODY_KEYPOINT_NAMES[-1] == "right_pinky_finger4"

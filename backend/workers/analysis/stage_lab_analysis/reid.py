@@ -11,6 +11,9 @@ from .detection import NormalizedBox
 from .runtime_probe import ModelManifestError
 
 
+MIN_REID_EMBEDDING_QUALITY = 0.03
+
+
 @dataclass(frozen=True, slots=True)
 class PersonEmbedding:
     """A finite, L2-normalized whole-person appearance descriptor."""
@@ -48,7 +51,7 @@ class OpenVINOReIDEmbedder:
         infer: Callable[[Any], Sequence[float]] | None = None,
         min_width: int = 16,
         min_height: int = 32,
-        min_quality: float = 0.03,
+        min_quality: float = MIN_REID_EMBEDDING_QUALITY,
     ) -> None:
         if device.upper() != "CPU":
             raise ValueError("OpenVINO Re-ID supports only the CPU device")

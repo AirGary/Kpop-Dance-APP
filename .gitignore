@@ -19,6 +19,14 @@ backend/.venv/
 *.pyc
 *.egg-info/
 
+# Stage 1 private truth annotations
+docs/fancam-demo-ground-truth.local.json
+docs/fancam-demo-ground-truth.proposed.local.json
+docs/fancam-demo-ground-truth.legacy.local.json
+docs/fancam-demo-ground-truth.local.tmp
+docs/fancam-demo-ground-truth.proposed.local.tmp
+docs/fancam-demo-ground-truth.legacy.local.tmp
+
 # Terraform local state and reviewed plans
 .terraform/
 *.tfstate
