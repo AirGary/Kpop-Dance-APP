@@ -7,7 +7,7 @@
 - 用户已授权验证后以 `codex/desktop-fancam` 独立分支提交并推送。仅桌面实验代码、测试、依赖声明与说明；私有视频、权重、标注和成片不发布，其他 iOS/API/Worker 修改保留未提交。
 - 拟提交隔离快照的 analysis 测试 418 passed / 0 failed（7.43 秒，退出 0）；真实源两秒 smoke 退出 0（30.5 秒），20 身份观测、60 输出帧完整解码退出 0。确认加载快照模块而不是原工作区。完整工作区回归 439 passed / 0 failed（7.39 秒，退出 0）；多出的 21 项属于未纳入此次桌面提交的其他测试改动。
 - 独立审查指出的三个私有标注临时文件已补 ignore，复核通过；diff check 退出 0。全片 r6 运行、解码与画面对照完成，但整体覆盖退化，详见下节；Stage 仍 In Progress。
-- 当前代码状态 Implemented / Locally Verified；Git 发布待执行，不代表已验收或可安装的桌面发行版。
+- 当前代码状态 Committed / Pushed：代码提交 `1798da59f65904ca885594696e949b9001af5be7` 已推送 `origin/codex/desktop-fancam`，远端查询提交号一致（2026-10-11，退出 0）。仅独立实验分支；未创建 PR、合并 main 或部署，Stage 仍 In Progress，不代表已验收或可安装的桌面发行版。
 
 ## 离线固定成员轨迹（2026-10-05）
 
