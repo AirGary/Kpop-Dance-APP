@@ -125,6 +125,48 @@ def test_global_camera_pan_is_removed_before_local_path_matching():
     assert inferred[1] == {0}
 
 
+def test_overlapping_large_boxes_can_bridge_agreeing_identity_anchors():
+    rows = tuple((i / 10, (Detection(i / 10,
+        NormalizedBox(.2 + .08 * i, .2, .3, .6), .95),), (None,))
+        for i in range(3))
+    anchors = ({0: rows[0][1][0].box}, {}, {0: rows[2][1][0].box})
+
+    paths, inferred = stitch(rows, anchors, member_count=1)
+
+    assert paths[1].get(0) == rows[1][1][0].box
+    assert inferred[1] == {0}
+
+
+def test_far_nonoverlapping_boxes_cannot_jump_even_with_identical_appearance():
+    feature = PersonEmbedding((1., 0.), 1.)
+    rows = tuple(observation(i / 10, [.2 + .1 * i], [feature]) for i in range(3))
+    anchors = ({0: rows[0][1][0].box}, {}, {0: rows[2][1][0].box})
+
+    paths, inferred = stitch(rows, anchors, member_count=1)
+
+    assert paths == anchors
+    assert not any(inferred)
+
+
+@pytest.mark.parametrize('ambiguous', [False, True])
+def test_stale_endpoint_does_not_override_recent_continuity(ambiguous):
+    positions = [[.2, .4], [.2], [.2], [.28, .281] if ambiguous else [.28], [.3]]
+    rows = tuple((i / 10, tuple(Detection(i / 10,
+        NormalizedBox(x, .2, .3, .6), .95) for x in xs), (None,) * len(xs))
+        for i, xs in enumerate(positions))
+    anchors = ({0: rows[0][1][0].box}, {}, {}, {}, {0: rows[-1][1][0].box})
+
+    paths, inferred = stitch(rows, anchors, member_count=1,
+        camera_transforms=(None,) + ((1., 0., 0.),) * 4)
+
+    if ambiguous:
+        assert paths == anchors
+        assert not any(inferred)
+    else:
+        assert all(path.get(0) == rows[i][1][0].box for i, path in enumerate(paths))
+        assert inferred[1:4] == (frozenset({0}),) * 3
+
+
 def test_scene_cut_does_not_reuse_pre_cut_velocity():
     rows = (observation(0., [.2, .4, .6]),
             observation(.1, [.21, .41, .61]),

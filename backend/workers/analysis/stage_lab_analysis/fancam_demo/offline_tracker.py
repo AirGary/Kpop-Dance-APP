@@ -104,7 +104,9 @@ def _directional_links(observations, camera_transforms, *, reverse=False):
                 distance = math.hypot(box.x + box.width / 2 - predicted.x - predicted.width / 2,
                                       box.y + box.height / 2 - predicted.y - predicted.height / 2)
                 radius = min(.25, .04 + .20 * dt)
-                if distance > radius:
+                overlap = predicted.iou(box)
+                # Large close-up boxes can overlap despite a large center shift.
+                if distance > radius and overlap == 0.:
                     continue
                 embedding = embeddings[col]
                 similarity = None
@@ -113,12 +115,18 @@ def _directional_links(observations, camera_transforms, *, reverse=False):
                     similarity = cosine_similarity(embedding, old_embedding)
                     if similarity < .35:
                         continue
-                motion = .55 * (1 - predicted.iou(box)) + .45 * distance / radius
+                motion = .55 * (1 - overlap) + .45 * distance / radius
                 costs[row, col] = (motion if similarity is None else .6 * motion + .4 * (1 - similarity))
                 # Weak detections may continue a strong-started anonymous path,
                 # but lose to equally plausible strong evidence.
                 if detection.confidence < .35:
                     costs[row, col] += .15
+        # Reconnect stale endpoints only where adjacent-frame continuity is absent.
+        recent = [row for row, node in enumerate(endpoints) if node[0] == prior_frame]
+        stale = [row for row, node in enumerate(endpoints) if node[0] != prior_frame]
+        for col in range(m):
+            if any(costs[row, col] < .95 for row in recent):
+                costs[stale, col] = 100.
         matched = {}
         if n:
             rows, cols = linear_sum_assignment(costs)

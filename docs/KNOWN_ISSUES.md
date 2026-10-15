@@ -4,6 +4,19 @@
 
 ## Offline member trajectories remain unaccepted (2026-10-06)
 
+- 2026-10-11 overlap/adjacent-continuity association candidate restores B
+  inference from 5 to 72 samples in a fixed 78–92s real replay; all six
+  reviewed 83–88s B controls match their correct boxes. This is local evidence,
+  not measured full-source identity accuracy. Full r7 completed with exit 0;
+  verified 2026-10-15: inferred B 148→215, no lost/changed old B samples,
+  fallback 2878→2763/5360 (51.55%); all frames decode, exit 0.
+  All 67 added sample boxes and 15 matched rendered frames were inspected.
+  85/87/88/89s improve, but 83s changes from close to wide; 84/86s still
+  fall back. 67.5/160/165/170s gaps remain. Foreground occluders and source
+  truncation remain visible; no full-source identity/full-body acceptance.
+  Adjacent-frame priority can suppress stale-endpoint recovery;
+  retain reciprocal links, ambiguity rejection and agreeing endpoint anchors.
+
 - r6 full-length validation completed on 2026-10-11: exit 0, 1721.39s wall
   time; all 5360 frames decode (exit 0). Identity observations remain 656,
   inferred samples fall from 161 to 148, and wide fallback rises from 2850
