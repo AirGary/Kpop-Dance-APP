@@ -267,6 +267,99 @@ def source(tmp_path):
     return path
 
 
+@pytest.mark.parametrize('body_width,mode', [(.23, 'reduced_margin'), (.345, 'local_letterbox')])
+def test_offline_framing_keeps_wide_subject_instead_of_full_stage(renderer, body_width, mode):
+    box = NormalizedBox(.5, .15, body_width, .8)
+    bounds, reason = renderer._framing_bounds(box, 2560, 1440)
+    left, top, right, bottom = bounds
+    assert reason == mode
+    assert left <= box.x*2560 and right >= (box.x+box.width)*2560
+    assert top <= box.y*1440 and bottom >= (box.y+box.height)*1440
+    assert right-left < 2560/2
+
+
+def test_stable_crops_absorb_small_detection_jitter(renderer):
+    boxes = [(NormalizedBox(.3 + (.008 if i%2 else 0), .2, .15, .5), False)
+             for i in range(90)]
+    crops = renderer._stable_crops(boxes, 2560, 1440, 30)
+    centers = [(b[0]+b[2])/2 for b, mode in crops[20:]]
+    assert max(centers)-min(centers) < .002*2560
+    for (box, _), (bounds, _) in zip(boxes, crops):
+        assert bounds[0] <= box.x*2560
+        assert bounds[2] >= (box.x+box.width)*2560
+
+
+def test_stable_crops_limit_zoom_and_do_not_anticipate_across_absence(renderer):
+    small = NormalizedBox(.4, .2, .1, .5)
+    large = NormalizedBox(.3, .1, .3, .8)
+    boxes = [(small, False)]*30 + [(large, False)]*30 + [(None, False)]*20
+    crops = renderer._stable_crops(boxes, 2560, 1440, 30)
+    heights = [b[3]-b[1] for b, _ in crops[:60]]
+    assert max(abs(b-a) for a,b in zip(heights, heights[1:])) <= 1440*.8/30+2
+    assert all(b is None and mode == 'missing_track' for b,mode in crops[60:])
+    prefix = renderer._stable_crops(boxes[:60], 2560, 1440, 30)
+    suffix = renderer._stable_crops(boxes + [(small, False)]*10, 2560, 1440, 30)
+    assert prefix == suffix[:60]
+
+
+def test_stable_crops_preserve_body_on_fast_motion_and_source_edges(renderer):
+    boxes = [(NormalizedBox(x, .1, .15, .8), False) for x in [0., .01, .8, .85]]
+    crops = renderer._stable_crops(boxes, 2560, 1440, 30)
+    for (box, _), (b, _) in zip(boxes, crops):
+        assert 0 <= b[0] <= box.x*2560
+        assert (box.x+box.width)*2560 <= b[2] <= 2560
+        assert 0 <= b[1] <= box.y*1440
+        assert (box.y+box.height)*1440 <= b[3] <= 1440
+
+
+def test_offline_scale_expires_but_partial_inference_cannot_teach_zoom(renderer):
+    large = NormalizedBox(.3, .1, .25, .8)
+    small = NormalizedBox(.35, .3, .12, .5)
+    samples = ((0., large),) + tuple((i/10, small) for i in range(1, 41))
+    camera = renderer._camera_boxes(samples, tuple(t for t,_ in samples), 41, 10,
+        inferred_times={i/10 for i in range(1, 40)}, missing_policy='hold', expire_scale=True)
+    assert camera[30][0].width >= .25
+    assert camera[-1][0].width == pytest.approx(.12)
+
+
+def test_stable_crops_freeze_exactly_during_absence(renderer):
+    a, b = NormalizedBox(.2,.2,.1,.5), NormalizedBox(.7,.1,.2,.8)
+    boxes = [(a, False)]*10 + [(a, True)]*5 + [(b, False)]*10
+    cropped = renderer._stable_crops(boxes, 2560,1440,30,held_frames=set(range(10,15)))
+    prefix = renderer._stable_crops(boxes[:15],2560,1440,30,held_frames=set(range(10,15)))
+    assert cropped[:15] == prefix
+    assert cropped[10:15] == [cropped[9]]*5
+
+
+def test_short_gap_inferred_reentry_cannot_reset_reliable_scale(renderer):
+    large, small = NormalizedBox(.3,.1,.25,.8), NormalizedBox(.35,.3,.12,.5)
+    samples = ((0.,large),(.1,None),(.2,small),(.3,small))
+    camera = renderer._camera_boxes(samples,(0.,.1,.2,.3),4,10,
+        inferred_times={.2,.3},missing_policy='hold',expire_scale=True)
+    assert camera[2][0].width >= large.width
+    assert camera[2][0].height >= large.height
+
+
+def test_zoom_does_not_create_side_bars_in_landscape_source(renderer):
+    small, large = NormalizedBox(.4,.2,.1,.5), NormalizedBox(.3,.1,.3,.8)
+    crops = renderer._stable_crops([(small,False)]*30+[(large,False)]*30,2560,1440,30)
+    assert all((b[2]-b[0])*16 >= (b[3]-b[1])*9-16 for b,mode in crops)
+    assert all(abs((b[2]-b[0])*16-(b[3]-b[1])*9) <= 16
+               for b,mode in crops if mode == 'portrait')
+
+
+def test_offline_render_classifies_local_letterbox_without_false_identity(renderer, source, tmp_path):
+    body = NormalizedBox(.3, .1, .4, .8)
+    report = renderer.render_preview(source, tmp_path/'local.mp4',
+        ((0., body), (.2, body), (.3, None)), duration=1., fps=10,
+        width=180, height=320, missing_policy='hold', inferred_times={0., .2})
+    assert report['framing_counts']['local_letterbox'] > 0
+    assert report['framing_counts']['missing_track'] > 0
+    assert sum(report['framing_counts'].values()) == report['frame_count']
+    assert report['observed_frames'] == 0
+    assert report['fallback_frames'] == report['framing_counts']['missing_track']
+
+
 def probe(path):
     return json.loads(subprocess.run([
         "ffprobe", "-v", "error", "-show_streams", "-show_format",

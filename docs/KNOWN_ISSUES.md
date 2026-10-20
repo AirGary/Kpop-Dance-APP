@@ -2,6 +2,18 @@
 
 本桌面分支的 Fancam 限制见下方新增章节；其余内容为基线历史。本次不发布或验证 iOS/API/云端修复。
 
+## Desktop camera stabilization remains awaiting visual acceptance (2026-10-20)
+
+- r8 eliminates all 230 geometry-only fallback frames on the same fused input;
+  2533/5360 frames (47.26%) still fall back because the B trajectory is missing.
+  Identity observations/inferences remain 656/215; coverage is not accuracy.
+  83/84/86s now retain local B framing; 67.5/115/160/165/170s gaps remain.
+  Motion metrics improve, but contact sheets cannot establish dynamic viewing
+  acceptance. Body containment overrides motion limits on abrupt movement.
+  Foreground occluders and body pixels absent from the source are not repaired.
+  Default bridge behavior and identity gates are unchanged; this is an offline
+  desktop experiment, not an accepted product release.
+
 ## Offline member trajectories remain unaccepted (2026-10-06)
 
 - 2026-10-11 overlap/adjacent-continuity association candidate restores B

@@ -107,6 +107,85 @@ def _composable_camera_box(box, last_box, width, height, *,
     return box, False
 
 
+def _framing_bounds(box, width, height):
+    if box is None:
+        return None, 'missing_track'
+    bounds = _crop_bounds(box, width, height)
+    if bounds is not None:
+        return bounds, 'portrait'
+    unit = math.floor(min(width/9, height/16))
+    crop_width, crop_height = 9*unit, 16*unit
+    left, top = math.floor(box.x*width), math.floor(box.y*height)
+    right = math.ceil((box.x+box.width)*width)
+    bottom = math.ceil((box.y+box.height)*height)
+    mode = 'reduced_margin'
+    if right-left > crop_width or bottom-top > crop_height:
+        # Preserve the visible body with local padding, never replace it by the stage.
+        crop_width = min(width, max(crop_width, math.ceil((right-left)*1.1)))
+        crop_height = min(height, max(crop_height, bottom-top))
+        mode = 'local_letterbox'
+    x = max(0, min(width-crop_width, math.floor((left+right-crop_width)/2)))
+    y = max(0, min(height-crop_height, math.floor((top+bottom-crop_height)/2)))
+    return (x, y, x+crop_width, y+crop_height), mode
+
+
+def _stable_crops(camera_boxes, width, height, fps, *, held_frames=frozenset()):
+    targets = [_framing_bounds(box, width, height) for box, _ in camera_boxes]
+    sizes = [None if b is None else [b[2]-b[0], b[3]-b[1]] for b, _ in targets]
+    zoom_extents = (min(width, height*9/16), height)
+    # Anticipate growth only within continuous observations, not across absence.
+    for i in range(len(sizes)-2, -1, -1):
+        if (sizes[i] is not None and sizes[i+1] is not None
+                and i not in held_frames and i+1 not in held_frames):
+            for axis, extent in enumerate(zoom_extents):
+                sizes[i][axis] = max(sizes[i][axis], sizes[i+1][axis]-.8*extent/fps)
+    output = []
+    previous = None
+    velocity = [0., 0.]
+    for i, ((target, mode), size) in enumerate(zip(targets, sizes)):
+        if target is None:
+            output.append((None, mode))
+            previous, velocity = None, [0., 0.]
+            continue
+        if i in held_frames and previous is not None:
+            output.append(output[-1])
+            continue
+        if i and i-1 in held_frames:
+            velocity = [0., 0.]
+        if previous is not None:
+            for axis, extent in enumerate(zoom_extents):
+                size[axis] = max(size[axis], previous[axis+2]-previous[axis]-.25*extent/fps)
+        size[0] = min(width, max(size[0], size[1]*9/16))
+        size[1] = min(height, max(size[1], size[0]*16/9))
+        body = camera_boxes[i][0]
+        body_edges = (body.x*width, body.y*height,
+                      (body.x+body.width)*width, (body.y+body.height)*height)
+        edges = []
+        for axis, extent in enumerate((width, height)):
+            span = min(extent, math.ceil(size[axis]))
+            center = (target[axis]+target[axis+2])/2
+            if previous is not None:
+                old_center = (previous[axis]+previous[axis+2])/2
+                error = center-old_center
+                error = math.copysign(max(0., abs(error)-.08*span), error)
+                wanted = max(-.5*extent, min(.5*extent, 4*error))
+                velocity[axis] += max(-.8*extent/fps,
+                                      min(.8*extent/fps, wanted-velocity[axis]))
+                center = old_center+velocity[axis]/fps
+            low = max(0, math.ceil(body_edges[axis+2])-span)
+            high = min(extent-span, math.floor(body_edges[axis]))
+            position = max(low, min(high, round(center-span/2)))
+            # Body containment takes priority over speed limits during abrupt motion.
+            if previous is not None and abs(position+span/2-center) > 1:
+                velocity[axis] = 0.
+            edges.append((position, position+span))
+        previous = (edges[0][0], edges[1][0], edges[0][1], edges[1][1])
+        if abs((previous[2]-previous[0])*16 - (previous[3]-previous[1])*9) > 16:
+            mode = 'local_letterbox'
+        output.append((previous, mode))
+    return output
+
+
 def _letterbox(frame, width, height):
     source_height, source_width = frame.shape[:2]
     scale = min(width/source_width, height/source_height)
@@ -128,7 +207,7 @@ def _compose_frame(frame, box, width, height):
 
 
 def _camera_boxes(samples, times, frame_count, fps, *, inferred_times=frozenset(),
-                  missing_policy="bridge", hold_seconds=.5):
+                  missing_policy="bridge", hold_seconds=.5, expire_scale=False):
     """Offline framing: retain standing scale through brief crouches.
 
     Bridge mode retains legacy interpolation and half-second fallback. Hold
@@ -159,6 +238,7 @@ def _camera_boxes(samples, times, frame_count, fps, *, inferred_times=frozenset(
     radius = max(1, round(fps*.4))
     scale_radius = max(1, round(fps*1.5))
     scale_history = []
+    last_reliable_scale = None
     for i, (box, inferred) in enumerate(resolved):
         if missing_policy == "hold":
             if box is None:
@@ -172,6 +252,8 @@ def _camera_boxes(samples, times, frame_count, fps, *, inferred_times=frozenset(
                     output.append((None, False))
                 continue
             if i == 0 or resolved[i-1][0] is None:
+                if expire_scale:
+                    scale_history = []
                 run_start, run_end = i, i+1
                 while run_end < frame_count and resolved[run_end][0] is not None:
                     run_end += 1
@@ -180,13 +262,16 @@ def _camera_boxes(samples, times, frame_count, fps, *, inferred_times=frozenset(
             continue
         neighbors = [b for b, _ in resolved[max(run_start, i-radius):min(run_end, i+radius+1)]
                      if b is not None]
+        if expire_scale:
+            scale_history = [(j, b) for j, b in scale_history if j >= i-scale_radius]
         if not inferred:
+            last_reliable_scale = box
             scale_history.append((i, box))
             scale_history = [(j, b) for j, b in scale_history
                              if j >= i-scale_radius]
         # Inferred/partial boxes may move the camera, but cannot teach it a
         # tighter crop. Retain the last reliable scale through the uncertainty.
-        scale_boxes = [b for _, b in scale_history] or [box]
+        scale_boxes = [b for _, b in scale_history] or [last_reliable_scale or box]
         cx = sum(b.x+b.width/2 for b in neighbors)/len(neighbors)
         bottom = sum(b.y+b.height for b in neighbors)/len(neighbors)
         width = max(box.width, float(np.quantile([b.width for b in scale_boxes], .85)))
@@ -267,7 +352,8 @@ def render_preview(source: Path, destination: Path,
     frame_count = math.ceil(duration*fps-1e-9)
     camera_boxes = _camera_boxes(samples, times, frame_count, fps,
                                  inferred_times=inferred_times,
-                                 missing_policy=missing_policy, hold_seconds=hold_seconds)
+                                 missing_policy=missing_policy, hold_seconds=hold_seconds,
+                                 expire_scale=missing_policy == 'hold')
     actual_duration = frame_count/fps
     capture = cv2.VideoCapture(str(source))
     temporary = None
@@ -277,12 +363,21 @@ def render_preview(source: Path, destination: Path,
     last_composable_box = None
     last_composable_index = -math.floor(fps*.5)-1
     max_camera_hold_frames = max(1, math.floor(fps*.5))
+    framing_counts = dict(portrait=0, reduced_margin=0, local_letterbox=0,
+                          missing_track=0, geometry_unfit=0)
     try:
         if not capture.isOpened():
             raise ValueError("source video is unreadable")
         source_fps = capture.get(cv2.CAP_PROP_FPS)
         if not math.isfinite(source_fps) or source_fps <= 0:
             raise ValueError("source video has invalid fps")
+        stable_crops = None
+        if missing_policy == 'hold':
+            held_frames = {i for i in range(frame_count) if camera_boxes[i][0] is not None
+                           and _resolve_box_at(samples, times, i/fps,
+                                               missing_policy='hold')[0] is None}
+            stable_crops = _stable_crops(camera_boxes, int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)), fps, held_frames=held_frames)
         fd, name = tempfile.mkstemp(prefix=".fancam-preview-", suffix=".mp4",
                                     dir=destination.parent)
         os.close(fd)
@@ -333,7 +428,19 @@ def render_preview(source: Path, destination: Path,
                 if box is not None and not bridged:
                     last_composable_box = box
                     last_composable_index = output_index
-            rendered, focused = _compose_frame(frame, box, width, height)
+            if stable_crops is not None:
+                bounds, framing_mode = stable_crops[output_index]
+                focused = bounds is not None
+                if focused:
+                    x, y, right, bottom = bounds
+                    rendered = _letterbox(frame[y:bottom, x:right], width, height)
+                else:
+                    rendered = _letterbox(frame, width, height)
+            else:
+                rendered, focused = _compose_frame(frame, box, width, height)
+                framing_mode = 'portrait' if focused else (
+                    'missing_track' if box is None else 'geometry_unfit')
+            framing_counts[framing_mode] += 1
             if focused and bridged:
                 bridged_frames += 1
             elif focused:
@@ -363,7 +470,8 @@ def render_preview(source: Path, destination: Path,
                 "observed_frames": observed_frames, "bridged_frames": bridged_frames,
                 "fallback_frames": frame_count-focused_frames,
                 "duration": actual_duration, "fps": fps, "width": width,
-                "height": height, "has_audio": has_audio, "preview_only": True}
+                "height": height, "has_audio": has_audio, "preview_only": True,
+                "framing_counts": framing_counts}
     except (BrokenPipeError, subprocess.TimeoutExpired) as error:
         raise RuntimeError("preview encoder failed") from error
     finally:
