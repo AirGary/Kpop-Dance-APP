@@ -35,24 +35,23 @@ struct kpopApp: App {
         if let pairingToken = processInfo["STAGE_LAB_PAIRING_TOKEN"] {
             launchInfo["STAGE_LAB_PAIRING_TOKEN"] = pairingToken
         }
-        let configuration: JobsAPIConfiguration
-        if let configured = try? JobsAPIConfiguration.from(infoDictionary: launchInfo) {
-            configuration = configured
-        } else {
-            configuration = JobsAPIConfiguration(
-                baseURL: URL(string: "http://127.0.0.1:8000")!,
-                bearerToken: "dev-user-a"
+        if let configuration = JobsAPIConfiguration.debugConfiguration(from: launchInfo) {
+            jobsAPIClient = JobsAPIClient(configuration: configuration)
+            let configuredAnalysisClient = AnalysisAPIClient(configuration: configuration)
+            analysisAPIClient = configuredAnalysisClient
+            let configuredAnalysisService = RemoteAnalysisService(client: configuredAnalysisClient)
+            analysisService = configuredAnalysisService
+            analysisPackageDownloader = configuredAnalysisService
+            uploadRunner = try? UploadRunner(
+                coordinator: ResumableUploadCoordinator.live(configuration: configuration)
             )
+        } else {
+            jobsAPIClient = nil
+            uploadRunner = nil
+            analysisAPIClient = nil
+            analysisService = nil
+            analysisPackageDownloader = nil
         }
-        jobsAPIClient = JobsAPIClient(configuration: configuration)
-        let configuredAnalysisClient = AnalysisAPIClient(configuration: configuration)
-        analysisAPIClient = configuredAnalysisClient
-        let configuredAnalysisService = RemoteAnalysisService(client: configuredAnalysisClient)
-        analysisService = configuredAnalysisService
-        analysisPackageDownloader = configuredAnalysisService
-        uploadRunner = try? UploadRunner(
-            coordinator: ResumableUploadCoordinator.live(configuration: configuration)
-        )
         #else
         jobsAPIClient = nil
         uploadRunner = nil

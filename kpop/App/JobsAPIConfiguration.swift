@@ -11,6 +11,10 @@ nonisolated struct JobsAPIConfiguration: Equatable, Sendable {
         self.pairingToken = pairingToken
     }
 
+    static func debugConfiguration(from infoDictionary: [String: Any]) -> JobsAPIConfiguration? {
+        try? from(infoDictionary: infoDictionary)
+    }
+
     static func from(infoDictionary: [String: Any]) throws -> JobsAPIConfiguration? {
         guard let environment = infoDictionary["STAGE_LAB_ENVIRONMENT"] as? String else {
             return nil

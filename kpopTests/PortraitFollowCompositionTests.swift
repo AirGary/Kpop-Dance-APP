@@ -96,6 +96,46 @@ func trackingPlanUsesExactPortraitSizeAndCropAndTransformRamps() async throws {
 }
 
 @Test
+func trackingPlanUsesAnalysisTimestampsInsteadOfEvenlyRedistributingFrames() async throws {
+    let asset = try await TestVideoAsset.make(size: CGSize(width: 1920, height: 1080), duration: 90)
+    let item = try await PortraitFollowCompositionBuilder.makeItem(
+        asset: asset,
+        timedFrames: [
+            .init(timeSeconds: 11, frame: .tracking(NormalizedRect(minX: 0.2, minY: 0, width: 0.5625, height: 1))),
+            .init(timeSeconds: 74, frame: .tracking(NormalizedRect(minX: 0.25, minY: 0, width: 0.5625, height: 1)))
+        ]
+    )
+
+    let composition = try #require(item.videoComposition)
+    let timedInstruction = try #require(composition.instructions
+        .compactMap { $0 as? AVVideoCompositionInstruction }
+        .first { abs(CMTimeGetSeconds($0.timeRange.start) - 11) < 0.001 })
+    #expect(abs(CMTimeGetSeconds(timedInstruction.timeRange.duration) - 63) < 0.001)
+}
+
+@Test
+func memberFancamTimedFramesUseTheOrderedPoseTrackAcrossAnUnreliablePose() throws {
+    let poses = [
+        memberPose(time: 0, centerX: 0.30),
+        AnalysisPoseFrame(
+            timeSeconds: 0.5,
+            confidence: 0.2,
+            keypoints: [
+                AnalysisPoseKeypoint(name: "nose", x: 0.9, y: 0.12, confidence: 0.1),
+                AnalysisPoseKeypoint(name: "left_ankle", x: 0.8, y: 0.88, confidence: 0.1),
+                AnalysisPoseKeypoint(name: "right_ankle", x: 0.95, y: 0.88, confidence: 0.1)
+            ]
+        ),
+        memberPose(time: 1, centerX: 0.70)
+    ]
+
+    let frames = PortraitFollowCompositionBuilder.memberFancamTimedFrames(for: poses)
+    let bridgedCrop = try #require(frames[1].frame.crop)
+
+    #expect(abs(bridgedCrop.centerX - 0.50) < 0.02)
+}
+
+@Test
 func fullSourcePlanUsesCenteredAspectFitCropAndTransform() async throws {
     let asset = try await TestVideoAsset.make(size: CGSize(width: 1920, height: 1080), duration: 2)
     let item = try await PortraitFollowCompositionBuilder.makeItem(asset: asset, frames: [.fullSource])
@@ -154,6 +194,20 @@ private func expectTransform(_ actual: CGAffineTransform, equals expected: CGAff
     #expect(abs(actual.d - expected.d) < tolerance)
     #expect(abs(actual.tx - expected.tx) < tolerance)
     #expect(abs(actual.ty - expected.ty) < tolerance)
+}
+
+private func memberPose(time: Double, centerX: Double) -> AnalysisPoseFrame {
+    AnalysisPoseFrame(
+        timeSeconds: time,
+        confidence: 0.9,
+        keypoints: [
+            AnalysisPoseKeypoint(name: "nose", x: centerX, y: 0.12, confidence: 0.95),
+            AnalysisPoseKeypoint(name: "left_shoulder", x: centerX - 0.08, y: 0.28, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_shoulder", x: centerX + 0.08, y: 0.28, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_ankle", x: centerX - 0.08, y: 0.88, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_ankle", x: centerX + 0.08, y: 0.88, confidence: 0.9)
+        ]
+    )
 }
 
 private func cropAndTransformRamp(

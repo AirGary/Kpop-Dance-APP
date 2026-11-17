@@ -48,10 +48,48 @@ def frame_camera_transform(previous, current, *, previous_boxes=(), current_boxe
     return (1., offset_x, offset_y) if shifted_error < static_error else (1., 0., 0.)
 
 
-def _directional_links(observations, camera_transforms, *, reverse=False):
+def _project_box(box, camera):
+    scale, offset_x, offset_y = camera
+    center_x = scale * (box.x + box.width / 2) + offset_x
+    center_y = scale * (box.y + box.height / 2) + offset_y
+    width = min(1., box.width * scale)
+    height = min(1., box.height * scale)
+    return NormalizedBox(min(1 - width, max(0., center_x - width / 2)),
+                         min(1 - height, max(0., center_y - height / 2)), width, height)
+
+
+def _association_cost(old, old_embedding, predicted, detection, embedding, dt):
+    box = detection.box
+    if detection.confidence < .1:
+        return 100.
+    if not (1 / 1.5 <= box.width / old.width <= 1.5
+            and 1 / 1.5 <= box.height / old.height <= 1.5):
+        return 100.
+    distance = math.hypot(box.x + box.width / 2 - predicted.x - predicted.width / 2,
+                          box.y + box.height / 2 - predicted.y - predicted.height / 2)
+    radius = min(.25, .04 + .20 * dt)
+    overlap = predicted.iou(box)
+    # Large close-up boxes can overlap despite a large center shift.
+    if distance > radius and overlap == 0.:
+        return 100.
+    similarity = None
+    if (embedding is not None and old_embedding is not None
+            and min(embedding.quality, old_embedding.quality) >= MIN_REID_EMBEDDING_QUALITY):
+        similarity = cosine_similarity(embedding, old_embedding)
+        if similarity < .35:
+            return 100.
+    motion = .55 * (1 - overlap) + .45 * distance / radius
+    cost = motion if similarity is None else .6 * motion + .4 * (1 - similarity)
+    # Weak detections continue strong-started paths but lose to equally strong evidence.
+    return cost + (.15 if detection.confidence < .35 else 0.)
+
+
+def _directional_links(observations, camera_transforms, *, reverse=False,
+                       reciprocal_history=None):
     """Associate anonymous endpoints without creating or learning identities."""
     active = {}  # endpoint -> previous node, for directional velocity
     links = set()
+    rescued = set()
     indices = range(len(observations) - 1, -1, -1) if reverse else range(len(observations))
     prior_frame = None
     for frame_index in indices:
@@ -77,14 +115,7 @@ def _directional_links(observations, camera_transforms, *, reverse=False):
             predicted = old
             previous = active[node]
             if camera and node[0] == prior_frame:
-                scale, offset_x, offset_y = camera
-                center_x = scale * (old.x + old.width / 2) + offset_x
-                center_y = scale * (old.y + old.height / 2) + offset_y
-                width = min(1., old.width * scale)
-                height = min(1., old.height * scale)
-                predicted = NormalizedBox(
-                    min(1 - width, max(0., center_x - width / 2)),
-                    min(1 - height, max(0., center_y - height / 2)), width, height)
+                predicted = _project_box(old, camera)
                 previous = None  # Do not carry subject velocity through camera motion.
             elif previous is not None:
                 prior_time, prior_detections, _ = observations[previous[0]]
@@ -95,38 +126,50 @@ def _directional_links(observations, camera_transforms, *, reverse=False):
                 predicted = NormalizedBox(x, y, old.width, old.height)
             costs[row, m + row] = .95
             for col, detection in enumerate(detections):
-                box = detection.box
-                if detection.confidence < .1:
-                    continue
-                if not (1 / 1.5 <= box.width / old.width <= 1.5
-                        and 1 / 1.5 <= box.height / old.height <= 1.5):
-                    continue
-                distance = math.hypot(box.x + box.width / 2 - predicted.x - predicted.width / 2,
-                                      box.y + box.height / 2 - predicted.y - predicted.height / 2)
-                radius = min(.25, .04 + .20 * dt)
-                overlap = predicted.iou(box)
-                # Large close-up boxes can overlap despite a large center shift.
-                if distance > radius and overlap == 0.:
-                    continue
-                embedding = embeddings[col]
-                similarity = None
-                if (embedding is not None and old_embedding is not None
-                        and min(embedding.quality, old_embedding.quality) >= MIN_REID_EMBEDDING_QUALITY):
-                    similarity = cosine_similarity(embedding, old_embedding)
-                    if similarity < .35:
-                        continue
-                motion = .55 * (1 - overlap) + .45 * distance / radius
-                costs[row, col] = (motion if similarity is None else .6 * motion + .4 * (1 - similarity))
-                # Weak detections may continue a strong-started anonymous path,
-                # but lose to equally plausible strong evidence.
-                if detection.confidence < .35:
-                    costs[row, col] += .15
+                costs[row, col] = _association_cost(
+                    old, old_embedding, predicted, detection, embeddings[col], dt)
+        direct = costs[:, :m].copy() if reciprocal_history else None
         # Reconnect stale endpoints only where adjacent-frame continuity is absent.
         recent = [row for row, node in enumerate(endpoints) if node[0] == prior_frame]
         stale = [row for row, node in enumerate(endpoints) if node[0] != prior_frame]
         for col in range(m):
             if any(costs[row, col] < .95 for row in recent):
                 costs[stale, col] = 100.
+        assisted = set()
+        if reciprocal_history:
+            for row in recent:
+                node = endpoints[row]
+                previous = active[node]
+                if (previous is None or node in rescued or previous in rescued
+                        or abs(previous[0] - node[0]) != 1
+                        or abs(frame_index - node[0]) != 1
+                        or np.any(direct[row] < .95)):
+                    continue
+                edge = (node, previous) if reverse else (previous, node)
+                if edge not in reciprocal_history:
+                    continue
+                old_time, old_detections, old_embeddings = observations[previous[0]]
+                dt = abs(timestamp - old_time)
+                history_camera = camera_transforms[previous[0] if reverse else node[0]]
+                if dt > .5 + 1e-9 or history_camera in (None, False) or camera in (None, False):
+                    continue
+                scale, dx, dy = history_camera
+                if reverse:
+                    scale, dx, dy = 1 / scale, -dx / scale, -dy / scale
+                next_scale, next_dx, next_dy = camera
+                # Compose before clamping so offscreen intermediate geometry is retained.
+                composed = (next_scale * scale, next_scale * dx + next_dx,
+                            next_scale * dy + next_dy)
+                old = old_detections[previous[1]].box
+                predicted = _project_box(old, composed)
+                for col, detection in enumerate(detections):
+                    if direct[row, col] >= 100. or np.any(direct[:, col] < .95):
+                        continue
+                    cost = _association_cost(old, old_embeddings[previous[1]], predicted,
+                                             detection, embeddings[col], dt)
+                    if cost < .95:
+                        costs[row, col] = cost
+                        assisted.add((row, col))
         matched = {}
         if n:
             rows, cols = linear_sum_assignment(costs)
@@ -141,6 +184,8 @@ def _directional_links(observations, camera_transforms, *, reverse=False):
                     continue
                 old_node, new_node = endpoints[row], (frame_index, int(col))
                 links.add((new_node, old_node) if reverse else (old_node, new_node))
+                if (row, col) in assisted:
+                    rescued.add(new_node)
                 matched[int(col)] = old_node
                 del active[old_node]
         for col in range(m):
@@ -193,6 +238,10 @@ def stitch_trajectories(observations, anchors, *, member_count, camera_transform
     # multi-hypothesis path solver is warranted only by measured missed paths.
     links = (_directional_links(observations, camera_transforms)
              & _directional_links(observations, camera_transforms, reverse=True))
+    original = frozenset(links)
+    links = (_directional_links(observations, camera_transforms, reciprocal_history=original)
+             & _directional_links(observations, camera_transforms, reverse=True,
+                                  reciprocal_history=original))
     following = dict(links)
     preceded = {right for _, right in links}
     spans = []

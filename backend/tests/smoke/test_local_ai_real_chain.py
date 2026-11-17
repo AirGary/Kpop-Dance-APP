@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import math
 import os
 import subprocess
 import asyncio
@@ -30,6 +31,8 @@ EXPECTED_PACKAGE_MEMBERS = (
     "spotlight-track.json",
     "timeline.json",
 )
+REQUIRED_FULL_BODY_LANDMARKS = frozenset(("nose", "left_ankle", "right_ankle"))
+RELIABLE_LANDMARK_CONFIDENCE = 0.5
 
 
 def _duration(path: Path) -> float:
@@ -48,6 +51,7 @@ def _acceptance_metrics(
     package: Path,
     *,
     elapsed_seconds: float,
+    identity_confirmation_count: int = 0,
 ) -> dict[str, int | float | list[str]]:
     clusters = json.loads((analysis_directory / "identity-clusters.json").read_text(encoding="utf-8"))
     plan = json.loads((analysis_directory / "target-work-plan.json").read_text(encoding="utf-8"))
@@ -77,7 +81,23 @@ def _acceptance_metrics(
     }
     with zipfile.ZipFile(package) as archive:
         members = sorted(archive.namelist())
+        pose_track = json.loads(archive.read("pose-track.json"))
+        spotlight_track = json.loads(archive.read("spotlight-track.json"))
     assert tuple(members) == EXPECTED_PACKAGE_MEMBERS
+    if not isinstance(pose_track, list) or not isinstance(spotlight_track, list):
+        raise AssertionError("result package pose and spotlight tracks must be arrays")
+    reliable_pose_times = [
+        time_seconds
+        for frame in pose_track
+        if (time_seconds := _reliable_full_body_pose_time(frame)) is not None
+    ]
+    valid_crop_input_times = {
+        time_seconds
+        for frame in spotlight_track
+        if (time_seconds := _valid_fancam_crop_input_time(frame)) is not None
+    }
+    crop_input_count = sum(time_seconds in valid_crop_input_times for time_seconds in reliable_pose_times)
+    pose_count = len(pose_track)
     return {
         "elapsedSeconds": round(elapsed_seconds, 3),
         "candidateClusterCount": len(clusters["candidateClusters"]),
@@ -85,9 +105,50 @@ def _acceptance_metrics(
         "acceptedFragmentCount": len(accepted),
         "rejectedFragmentCount": len(rejected),
         "awaitingConfirmationFragmentCount": len(awaiting),
+        "identityConfirmationCount": identity_confirmation_count,
         "packageMembers": members,
         "finalPoseCoverage": round(accepted_duration / visible_duration, 3) if visible_duration else 0.0,
+        "wholeBodyPoseFrameCount": len(reliable_pose_times),
+        "wholeBodyPoseCoverage": round(len(reliable_pose_times) / pose_count, 3) if pose_count else 0.0,
+        "fancamCropInputFrameCount": crop_input_count,
+        "fancamCropInputCoverage": round(crop_input_count / pose_count, 3) if pose_count else 0.0,
     }
+
+
+def _reliable_full_body_pose_time(frame: object) -> float | None:
+    if not isinstance(frame, dict):
+        return None
+    time_seconds = _finite_number(frame.get("timeSeconds"))
+    keypoints = frame.get("keypoints")
+    if time_seconds is None or not isinstance(keypoints, list):
+        return None
+    reliable_names = {
+        point.get("name")
+        for point in keypoints
+        if isinstance(point, dict)
+        and isinstance(point.get("name"), str)
+        and (_finite_number(point.get("confidence")) or -1) >= RELIABLE_LANDMARK_CONFIDENCE
+    }
+    return time_seconds if REQUIRED_FULL_BODY_LANDMARKS <= reliable_names else None
+
+
+def _valid_fancam_crop_input_time(frame: object) -> float | None:
+    if not isinstance(frame, dict):
+        return None
+    time_seconds = _finite_number(frame.get("timeSeconds"))
+    values = {key: _finite_number(frame.get(key)) for key in ("x", "y", "width", "height")}
+    if time_seconds is None or any(value is None for value in values.values()):
+        return None
+    x, y, width, height = (values[key] for key in ("x", "y", "width", "height"))
+    if width <= 0 or height <= 0 or x < 0 or y < 0 or x + width > 1 or y + height > 1:
+        return None
+    return time_seconds
+
+
+def _finite_number(value: object) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        return None
+    return float(value)
 
 
 def _analysis_directory(root: Path, job_id: str) -> Path:
@@ -164,7 +225,17 @@ def _wait_for_result_with_same_decisions(
 def _write_scripted_v1_package(destination: Path) -> tuple[str, int]:
     payloads = {
         "confidence.json": [{"confidence": 0.9, "endSeconds": 1.0, "startSeconds": 0.0}],
-        "pose-track.json": [{"confidence": 0.9, "keypoints": [], "timeSeconds": 0.0}],
+        "pose-track.json": [
+            {
+                "confidence": 0.9,
+                "keypoints": [
+                    {"name": "nose", "x": 0.5, "y": 0.2, "confidence": 0.9},
+                    {"name": "left_ankle", "x": 0.4, "y": 0.8, "confidence": 0.9},
+                    {"name": "right_ankle", "x": 0.6, "y": 0.8, "confidence": 0.9},
+                ],
+                "timeSeconds": 0.0,
+            },
+        ],
         "spotlight-track.json": [{"confidence": 0.9, "height": 0.5, "timeSeconds": 0.0, "width": 0.3, "x": 0.2, "y": 0.1}],
         "timeline.json": [{"difficulty": "easy", "endSeconds": 1.0, "reasons": [], "startSeconds": 0.0}],
     }
@@ -216,11 +287,24 @@ def test_acceptance_metrics_report_only_reproducible_aggregate_values(tmp_path):
     }), encoding="utf-8")
     package = analysis / "result-v1.zip"
     with zipfile.ZipFile(package, "w") as archive:
-        for member in (
-            "manifest.json", "pose-track.json", "spotlight-track.json",
-            "timeline.json", "confidence.json",
-        ):
-            archive.writestr(member, "{}")
+        archive.writestr("manifest.json", "{}")
+        archive.writestr("pose-track.json", json.dumps([{
+            "timeSeconds": 1.0,
+            "keypoints": [
+                {"name": "nose", "confidence": 0.9},
+                {"name": "left_ankle", "confidence": 0.8},
+                {"name": "right_ankle", "confidence": 0.8},
+            ],
+        }]))
+        archive.writestr("spotlight-track.json", json.dumps([{
+            "timeSeconds": 1.0,
+            "x": 0.2,
+            "y": 0.1,
+            "width": 0.3,
+            "height": 0.5,
+        }]))
+        archive.writestr("timeline.json", "{}")
+        archive.writestr("confidence.json", "{}")
 
     metrics = _acceptance_metrics(analysis, "candidate-1", package, elapsed_seconds=12.5)
 
@@ -231,11 +315,16 @@ def test_acceptance_metrics_report_only_reproducible_aggregate_values(tmp_path):
         "acceptedFragmentCount": 1,
         "rejectedFragmentCount": 1,
         "awaitingConfirmationFragmentCount": 1,
+        "identityConfirmationCount": 0,
         "packageMembers": [
             "confidence.json", "manifest.json", "pose-track.json",
             "spotlight-track.json", "timeline.json",
         ],
         "finalPoseCoverage": 0.8,
+        "wholeBodyPoseFrameCount": 1,
+        "wholeBodyPoseCoverage": 1.0,
+        "fancamCropInputFrameCount": 1,
+        "fancamCropInputCoverage": 1.0,
     }
 
 
@@ -297,7 +386,7 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
     with TestClient(create_app(settings=settings)) as client:
         job_id = _upload(client, path, headers)
         candidates = []
-        for _ in range(420):
+        for _ in range(600):
             response = client.get(f"/v1/jobs/{job_id}/dancers", headers=headers)
             assert response.status_code == 200
             candidates = response.json()
@@ -308,7 +397,9 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
             if state.json()["state"] == "failedRecoverable":
                 pytest.fail(f"candidate detection failed: {state.json()}")
             time.sleep(1)
-        assert 1 <= len(candidates) <= 8
+        # This is a source-specific acceptance baseline, not a production
+        # group-size prior. The Worker must not hard-code this number.
+        assert len(candidates) == 5
         assert all(len(item["representativeImagePaths"]) == 3 for item in candidates)
         candidate_image_path = candidates[0]["representativeImagePaths"][0]
         candidate_image = client.get(
@@ -331,7 +422,7 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
         assert selected.json()["state"] in {"queued", "analyzing", "resultReady", "failedRecoverable"}
         if selected.json()["state"] == "failedRecoverable":
             pytest.fail(f"target analysis failed: {selected.json()}")
-        _wait_for_result_with_same_decisions(restarted, job_id, headers, tmp_path)
+        confirmations = _wait_for_result_with_same_decisions(restarted, job_id, headers, tmp_path)
         result = restarted.get(f"/v1/jobs/{job_id}/result", headers=headers)
         assert result.status_code == 200
         assert result.json()["contentPath"] == "analysis/result-v1.zip"
@@ -344,10 +435,15 @@ def test_real_video_upload_candidates_restart_and_target_selection(tmp_path):
             candidates[0]["candidateId"],
             analysis_directory / "result-v1.zip",
             elapsed_seconds=time.monotonic() - started,
+            identity_confirmation_count=confirmations,
         )
         assert metrics["candidateClusterCount"] == len(candidates)
-        assert metrics["candidateClusterCount"] <= 8
+        assert metrics["candidateClusterCount"] == 5
         assert metrics["finalPoseCoverage"] >= 0.8
+        assert metrics["wholeBodyPoseFrameCount"] > 0
+        assert metrics["wholeBodyPoseCoverage"] >= 0.8
+        assert metrics["fancamCropInputFrameCount"] > 0
+        assert metrics["fancamCropInputCoverage"] >= 0.8
         assert metrics["packageMembers"] == list(EXPECTED_PACKAGE_MEMBERS)
         print(json.dumps(metrics, sort_keys=True))
 

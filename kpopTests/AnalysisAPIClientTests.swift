@@ -54,7 +54,7 @@ struct AnalysisAPIClientTests {
         let client = AnalysisAPIClient(configuration: configuration()) { request in
             if request.httpMethod == "GET" {
                 #expect(request.url?.path == "/v1/jobs/\(self.jobID.uuidString)/identity-confirmation")
-                return (Data(#"{"confirmationId":"confirm-1","kind":"identity","previousImagePath":"analysis/candidates/one.jpg","candidateImagePath":"analysis/candidates/two.jpg","previousInterval":{"startSeconds":1,"endSeconds":2},"candidateInterval":{"startSeconds":2,"endSeconds":3},"candidateClusterId":"candidate-1"}"#.utf8), self.response(status: 200, request: request))
+                return (Data(#"{"confirmationId":"confirm-1","previousImagePath":"analysis/candidates/one.jpg","candidateImagePath":"analysis/candidates/two.jpg","previousInterval":{"startSeconds":1,"endSeconds":2},"candidateInterval":{"startSeconds":2,"endSeconds":3},"candidateClusterId":"candidate-1"}"#.utf8), self.response(status: 200, request: request))
             }
             #expect(request.httpMethod == "POST")
             #expect(request.value(forHTTPHeaderField: "Idempotency-Key") == "identity-key")

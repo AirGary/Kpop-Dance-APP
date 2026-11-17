@@ -141,6 +141,28 @@ async def test_target_selection_idempotency_key_cannot_change_candidate(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_same_target_retries_a_recoverable_analysis_failure(tmp_path):
+    jobs = FileJobRepository(tmp_path)
+    response = job().model_copy(update={"state": AnalysisJobState.AWAITING_TARGET, "progress": 0.5})
+    await jobs.create(JobRecord("dev-user-a", "upload", "hash", response))
+    repository = FileAnalysisRepository(tmp_path)
+    await repository.update("dev-user-a", JOB_ID, response)
+    await repository.set_candidates("dev-user-a", JOB_ID, [candidate()])
+    runner = FakeRunner()
+    coordinator = AnalysisCoordinator(JobService(jobs, LocalObjectStore(tmp_path)), repository, LocalAnalysisWorkspace(tmp_path), runner)
+
+    await coordinator.select_target("dev-user-a", JOB_ID, "candidate-1", "selection-1")
+    await coordinator._tasks[JOB_ID]
+    assert (await jobs.get_for_owner(JOB_ID, "dev-user-a")).response.state is AnalysisJobState.FAILED_RECOVERABLE
+
+    await coordinator.select_target("dev-user-a", JOB_ID, "candidate-1", "selection-1")
+    await coordinator._tasks[JOB_ID]
+
+    assert runner.target_calls == 2
+    await coordinator.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_target_selection_cannot_switch_candidate_after_first_selection(tmp_path):
     jobs = FileJobRepository(tmp_path)
     response = job().model_copy(update={"state": AnalysisJobState.AWAITING_TARGET, "progress": 0.5})

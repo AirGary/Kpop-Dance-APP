@@ -10,14 +10,19 @@ from typing import Callable, Iterable, Protocol
 
 from .candidates import CandidateExtractor, CandidateSet
 from .detection import Detection, PersonDetector
-from .identity import ConservativeIdentityClusterer, TrackFragmentBuilder
+from .identity import ConservativeIdentityClusterer, TrackDescriptor, TrackFragmentBuilder
 from .pose import PoseEstimator, PoseFrame, PoseKeypoint, SpotlightKeyframe, build_spotlight_track, validate_pose_track
+from .reid import PersonEmbedding
 from .timeline import PracticeSegment, build_practice_timeline
-from .tracking import ByteTrackPersonTracker
+from .tracking import AppearanceAwarePersonTracker, ByteTrackPersonTracker
 
 
 class FrameReader(Protocol):
     def __call__(self, proxy: Path) -> Iterable[tuple[float, object, int, int]]: ...
+
+
+class PersonEmbedder(Protocol):
+    def embed(self, frame: object, box: object) -> PersonEmbedding | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +70,12 @@ class TargetAnalysisAwaitingConfirmation:
     confirmation: IdentityConfirmation
 
 
+@dataclass(frozen=True, slots=True)
+class TargetReassociation:
+    matched_fragment_ids: tuple[int, ...]
+    confirmation: IdentityConfirmation | None = None
+
+
 def _opencv_frames(proxy: Path, frame_stride: int = 1):
     if frame_stride < 1:
         raise ValueError("frame stride must be positive")
@@ -97,20 +108,26 @@ class AnalysisWorker:
         detector: PersonDetector,
         frame_reader: FrameReader = _opencv_frames,
         tracker: ByteTrackPersonTracker | None = None,
+        reid_embedder: PersonEmbedder | None = None,
         candidate_extractor: CandidateExtractor | None = None,
         fragment_builder: TrackFragmentBuilder | None = None,
         clusterer: ConservativeIdentityClusterer | None = None,
         frame_stride: int = 1,
+        candidate_frame_stride: int | None = None,
     ) -> None:
         self.detector = detector
         self.frame_reader = frame_reader
-        self.tracker = tracker or ByteTrackPersonTracker()
+        self.tracker = tracker or AppearanceAwarePersonTracker()
+        self.reid_embedder = reid_embedder
         self.candidate_extractor = candidate_extractor or CandidateExtractor()
         self.fragment_builder = fragment_builder or TrackFragmentBuilder()
         self.clusterer = clusterer or ConservativeIdentityClusterer()
         if frame_stride < 1:
             raise ValueError("frame stride must be positive")
+        if candidate_frame_stride is not None and candidate_frame_stride < 1:
+            raise ValueError("candidate frame stride must be positive")
         self.frame_stride = frame_stride
+        self.candidate_frame_stride = candidate_frame_stride or frame_stride
 
     def detect_candidates(self, workspace: Path) -> CandidateSet:
         proxy = workspace / "proxy.mp4" if workspace.name == "analysis" else workspace / "analysis" / "proxy.mp4"
@@ -121,7 +138,7 @@ class AnalysisWorker:
         frame_sample_counts: dict[int, int] = {}
         reader = self.frame_reader
         try:
-            frames = reader(proxy, self.frame_stride)  # type: ignore[call-arg]
+            frames = reader(proxy, self.candidate_frame_stride)  # type: ignore[call-arg]
         except TypeError:
             frames = reader(proxy)
         for time_seconds, frame, _, _ in frames:
@@ -129,7 +146,7 @@ class AnalysisWorker:
                 Detection(time_seconds, detection.box, detection.confidence)
                 for detection in self.detector.detect(frame)
             )
-            tracks = self.tracker.update(detections)
+            tracks = self._update_tracker(frame, detections, allow_dormant_reid=True)
             for track in tracks:
                 if track.samples and track.last_sample.time_seconds == time_seconds:
                     self._retain_candidate_sample(
@@ -171,6 +188,14 @@ class AnalysisWorker:
                 samples,
                 candidate_directory,
             )
+        fragment_directory = analysis_directory / "identity-fragments"
+        fragment_directory.mkdir(parents=True, exist_ok=True)
+        for fragment in fragments:
+            self._write_fragment_representatives(
+                fragment.fragment_id,
+                frame_samples.get(fragment.fragment_id, []),
+                fragment_directory,
+            )
         self._write_identity_clusters(analysis_directory, clustering, candidates)
         return candidates
 
@@ -196,7 +221,7 @@ class AnalysisWorker:
                 Detection(time_seconds, detection.box, detection.confidence)
                 for detection in self.detector.detect(frame)
             )
-            tracks = self.tracker.update(detections)
+            tracks = self._update_tracker(frame, detections)
             for track in tracks:
                 if track.samples and track.last_sample.time_seconds == time_seconds:
                     frame_samples.setdefault(track.track_id, []).append(
@@ -214,15 +239,225 @@ class AnalysisWorker:
             selected_samples = frame_samples.get(selected.primary_fragment_id, ())
             result = self._target_result(candidate_id, selected_samples, pose_estimator, beats)
             return TargetAnalysisCompleted(result)
-        else:
-            return self._checkpointed_target_result(
-                proxy.parent,
-                candidate_id,
-                selected_fragment_ids,
-                frame_samples,
-                pose_estimator,
-                beats,
+        target_fragments = self.fragment_builder.build(self.tracker.all_tracks, frame_samples)
+        reassociation = self._reassociate_target_fragments(
+            proxy.parent,
+            candidate_id,
+            target_fragments,
+            frame_samples,
+        )
+        if reassociation.confirmation is not None:
+            return TargetAnalysisAwaitingConfirmation(reassociation.confirmation)
+        selected_samples = (
+            sample
+            for fragment_id in reassociation.matched_fragment_ids
+            for sample in frame_samples.get(fragment_id, ())
+        )
+        result = self._target_result(candidate_id, selected_samples, pose_estimator, beats)
+        return TargetAnalysisCompleted(result)
+
+    def _update_tracker(
+        self,
+        frame: object,
+        detections: tuple[Detection, ...],
+        *,
+        allow_dormant_reid: bool = False,
+    ):
+        if not isinstance(self.tracker, AppearanceAwarePersonTracker):
+            return self.tracker.update(detections)
+        embeddings = tuple(
+            self.reid_embedder.embed(frame, detection.box) if self.reid_embedder is not None else None
+            for detection in detections
+        )
+        return self.tracker.update(
+            detections,
+            embeddings,
+            allow_dormant_reid=allow_dormant_reid,
+        )
+
+    @staticmethod
+    def _reassociate_target_fragments(
+        analysis_directory: Path,
+        candidate_id: str,
+        target_fragments,
+        frame_samples: dict[int, list[tuple[float, object, object]]],
+    ) -> TargetReassociation:
+        """Map fresh target-pass tracks to the selected dense-pass identity safely.
+
+        Track IDs are scoped to a worker process.  The persisted descriptors
+        deliberately exclude Re-ID vectors, so this only accepts a target
+        fragment when its local appearance descriptor wins clearly over every
+        non-selected candidate fragment.
+        """
+        clusters = AnalysisWorker._read_identity_clusters(analysis_directory)
+        candidate_clusters = clusters.get("candidateClusters")
+        if not isinstance(candidate_clusters, dict):
+            raise ValueError("identity candidate clusters are invalid")
+        selected_ids = candidate_clusters.get(candidate_id)
+        if not isinstance(selected_ids, list) or not selected_ids:
+            raise ValueError("selected identity cluster was not found")
+        persisted = {
+            item["fragmentId"]: item
+            for item in clusters["fragments"]
+            if isinstance(item, dict) and isinstance(item.get("fragmentId"), int)
+        }
+        try:
+            selected_descriptors = tuple(
+                (fragment_id, AnalysisWorker._persisted_safe_descriptor(persisted[fragment_id]))
+                for fragment_id in selected_ids
             )
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("selected identity descriptor is unavailable") from error
+        selected_id_set = set(selected_ids)
+        try:
+            other_descriptors = tuple(
+                (fragment_id, AnalysisWorker._persisted_safe_descriptor(fragment))
+                for fragment_id, fragment in persisted.items()
+                if fragment_id not in selected_id_set
+            )
+        except ValueError as error:
+            raise ValueError("identity descriptor is invalid") from error
+
+        matched: list[int] = []
+        for target in sorted(target_fragments, key=lambda item: (item.start_seconds, item.fragment_id)):
+            if not target.descriptor.is_valid:
+                continue
+            selected_score, selected_fragment_id = max(
+                (
+                    ConservativeIdentityClusterer._appearance_similarity(target.descriptor, descriptor),
+                    fragment_id,
+                )
+                for fragment_id, descriptor in selected_descriptors
+            )
+            other_score, other_fragment_id = max(
+                (
+                    (
+                        ConservativeIdentityClusterer._appearance_similarity(target.descriptor, descriptor),
+                        fragment_id,
+                    )
+                    for fragment_id, descriptor in other_descriptors
+                ),
+                default=(0.0, None),
+            )
+            if selected_score >= 0.90 and selected_score - other_score >= 0.08:
+                matched.append(target.fragment_id)
+                continue
+            if selected_score < ConservativeIdentityClusterer.confirmation_score or other_fragment_id is None:
+                continue
+            confirmation = AnalysisWorker._reassociation_confirmation(
+                analysis_directory,
+                candidate_id,
+                persisted,
+                selected_fragment_id,
+                target,
+                frame_samples.get(target.fragment_id, ()),
+            )
+            decision = AnalysisWorker._identity_decision(analysis_directory, confirmation.confirmation_id)
+            if decision is None:
+                return TargetReassociation((), confirmation)
+            if decision == "same":
+                matched.append(target.fragment_id)
+        if not matched:
+            raise ValueError("selected identity could not be safely reassociated")
+        return TargetReassociation(tuple(sorted(set(matched))))
+
+    @staticmethod
+    def _reassociation_confirmation(
+        analysis_directory: Path,
+        candidate_id: str,
+        fragments: dict[int, dict],
+        selected_fragment_id: int,
+        target_fragment,
+        target_samples,
+    ) -> IdentityConfirmation:
+        target_directory = analysis_directory / "target-identity-fragments"
+        target_directory.mkdir(parents=True, exist_ok=True)
+        AnalysisWorker._write_fragment_representatives(
+            target_fragment.fragment_id,
+            target_samples,
+            target_directory,
+        )
+        previous_path = f"analysis/identity-fragments/fragment-{selected_fragment_id}-3.jpg"
+        candidate_path = f"analysis/target-identity-fragments/fragment-{target_fragment.fragment_id}-1.jpg"
+        if not (analysis_directory / "identity-fragments" / f"fragment-{selected_fragment_id}-3.jpg").is_file():
+            raise RuntimeError("confirmation representative image is unavailable")
+        if not (target_directory / f"fragment-{target_fragment.fragment_id}-1.jpg").is_file():
+            raise RuntimeError("sparse confirmation representative image is unavailable")
+        start = target_fragment.start_seconds
+        end = target_fragment.end_seconds
+        if end == start:
+            end = start + 0.001
+        return IdentityConfirmation(
+            confirmation_id=(
+                f"reassociation-{candidate_id}-{selected_fragment_id}-"
+                f"{target_fragment.fragment_id}"
+            ),
+            previous_image_path=previous_path,
+            candidate_image_path=candidate_path,
+            previous_interval=AnalysisWorker._fragment_interval(fragments, selected_fragment_id),
+            candidate_interval=(start, end),
+            candidate_cluster_id=f"target-fragment-{target_fragment.fragment_id}",
+        )
+
+    @staticmethod
+    def _identity_decision(analysis_directory: Path, confirmation_id: str) -> str | None:
+        value = AnalysisWorker._read_optional_json(analysis_directory / "identity-decision.json")
+        decisions = value.get("decisions", [value]) if isinstance(value, dict) else []
+        for decision in reversed(decisions):
+            if not isinstance(decision, dict) or decision.get("confirmationId") != confirmation_id:
+                continue
+            choice = decision.get("decision")
+            if choice not in {"same", "different"}:
+                raise ValueError("identity decision does not match pending confirmation")
+            return choice
+        return None
+
+    @staticmethod
+    def _persisted_safe_descriptor(fragment: dict) -> TrackDescriptor:
+        value = fragment.get("descriptor")
+        if not isinstance(value, dict):
+            raise ValueError("identity descriptor is invalid")
+
+        def numbers(name: str, count: int) -> tuple[float, ...]:
+            raw = value.get(name)
+            if not isinstance(raw, list) or len(raw) != count:
+                raise ValueError("identity descriptor is invalid")
+            if any(not isinstance(item, (int, float)) or isinstance(item, bool) or not isfinite(item) for item in raw):
+                raise ValueError("identity descriptor is invalid")
+            return tuple(float(item) for item in raw)
+
+        histogram_value = value.get("hsvHistogram")
+        if not isinstance(histogram_value, list) or not histogram_value:
+            raise ValueError("identity descriptor is invalid")
+        if any(
+            not isinstance(item, (int, float)) or isinstance(item, bool) or not isfinite(item)
+            for item in histogram_value
+        ):
+            raise ValueError("identity descriptor is invalid")
+        edge_density = value.get("edgeDensity")
+        pose_quality = value.get("poseQuality")
+        if (
+            not isinstance(edge_density, (int, float))
+            or isinstance(edge_density, bool)
+            or not isfinite(edge_density)
+            or not isinstance(pose_quality, (int, float))
+            or isinstance(pose_quality, bool)
+            or not isfinite(pose_quality)
+        ):
+            raise ValueError("identity descriptor is invalid")
+        descriptor = TrackDescriptor(
+            hsv_histogram=tuple(float(item) for item in histogram_value),
+            edge_density=float(edge_density),
+            shoulder_to_hip_ratio=None,
+            torso_to_height_ratio=None,
+            pose_quality=float(pose_quality),
+            start_center=numbers("startCenter", 2),
+            end_center=numbers("endCenter", 2),
+            velocity=numbers("velocity", 2),
+        )
+        if not descriptor.is_valid:
+            raise ValueError("identity descriptor is invalid")
+        return descriptor
 
     @staticmethod
     def _target_result(
@@ -483,6 +718,17 @@ class AnalysisWorker:
                 and later not in excluded_set
             ):
                 return earlier, fragment_id
+            if (
+                isinstance(earlier, int)
+                and earlier == fragment_id
+                and isinstance(later, int)
+                and later in accepted_set
+                and earlier not in excluded_set
+            ):
+                # The selected candidate may be the later (and longest) side of
+                # an uncertain boundary. Ask before silently discarding its
+                # predecessor, using the selected fragment as the reference.
+                return later, earlier
         return None
 
     @staticmethod
@@ -496,21 +742,18 @@ class AnalysisWorker:
         previous_fragment = plan.get("pendingPreviousFragmentId")
         if not isinstance(pending_fragment, int) or not isinstance(previous_fragment, int):
             raise ValueError("pending confirmation is invalid")
-        inverse_clusters: dict[int, str] = {}
         clusters = AnalysisWorker._read_identity_clusters(analysis_directory).get("candidateClusters", {})
+        inverse_clusters: dict[int, str] = {}
         if isinstance(clusters, dict):
             for cluster_id, ids in clusters.items():
                 if isinstance(cluster_id, str) and isinstance(ids, list):
                     for fragment_id in ids:
                         if isinstance(fragment_id, int):
                             inverse_clusters.setdefault(fragment_id, cluster_id)
-        previous_cluster = inverse_clusters.get(previous_fragment, candidate_id)
-        candidate_cluster = inverse_clusters.get(pending_fragment)
-        if candidate_cluster is None:
-            raise ValueError("candidate confirmation image is unavailable")
-        previous_path = f"analysis/candidates/{previous_cluster}-3.jpg"
-        candidate_path = f"analysis/candidates/{candidate_cluster}-1.jpg"
-        if not (analysis_directory / "candidates" / f"{previous_cluster}-3.jpg").is_file() or not (analysis_directory / "candidates" / f"{candidate_cluster}-1.jpg").is_file():
+        candidate_cluster = inverse_clusters.get(pending_fragment, f"fragment-{pending_fragment}")
+        previous_path = f"analysis/identity-fragments/fragment-{previous_fragment}-3.jpg"
+        candidate_path = f"analysis/identity-fragments/fragment-{pending_fragment}-1.jpg"
+        if not (analysis_directory / "identity-fragments" / f"fragment-{previous_fragment}-3.jpg").is_file() or not (analysis_directory / "identity-fragments" / f"fragment-{pending_fragment}-1.jpg").is_file():
             raise RuntimeError("confirmation representative image is unavailable")
         confirmation_id = plan.get("pendingConfirmationId")
         if not isinstance(confirmation_id, str) or not confirmation_id:
@@ -537,8 +780,13 @@ class AnalysisWorker:
             or isinstance(end, bool)
             or not isfinite(start)
             or not isfinite(end)
-            or end <= start
         ):
+            raise ValueError("identity fragment interval is invalid")
+        if end == start:
+            # A single detector sample is still a real identity boundary; make
+            # its UI interval minimally valid instead of failing the whole Job.
+            return float(start), float(start + 0.001)
+        if end < start:
             raise ValueError("identity fragment interval is invalid")
         return float(start), float(end)
 
@@ -599,6 +847,15 @@ class AnalysisWorker:
     @staticmethod
     def _write_representatives(candidate, samples, directory: Path) -> None:
         """Write three temporally separated crops when the reader supplies image frames."""
+        AnalysisWorker._write_representative_crops(candidate.candidate_id, samples, directory)
+
+    @staticmethod
+    def _write_fragment_representatives(fragment_id: int, samples, directory: Path) -> None:
+        AnalysisWorker._write_representative_crops(f"fragment-{fragment_id}", samples, directory)
+
+    @staticmethod
+    def _write_representative_crops(stem: str, samples, directory: Path) -> None:
+        """Write three temporally separated private crops for one identity fragment."""
         usable = sorted(
             (sample for sample in samples if hasattr(sample[1], "shape")),
             key=lambda sample: sample[0],
@@ -622,7 +879,7 @@ class AnalysisWorker:
             success, encoded = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])
             if not success:
                 raise RuntimeError("candidate image encoding failed")
-            (directory / f"{candidate.candidate_id}-{index}.jpg").write_bytes(encoded.tobytes())
+            (directory / f"{stem}-{index}.jpg").write_bytes(encoded.tobytes())
 
     @staticmethod
     def _retain_candidate_sample(
@@ -683,6 +940,7 @@ class AnalysisWorker:
                         "startCenter": [AnalysisWorker._json_number(value) for value in fragment.descriptor.start_center],
                         "endCenter": [AnalysisWorker._json_number(value) for value in fragment.descriptor.end_center],
                         "velocity": [AnalysisWorker._json_number(value) for value in fragment.descriptor.velocity],
+                        "embeddingQuality": AnalysisWorker._json_number(fragment.descriptor.embedding_quality),
                     },
                 }
                 for cluster in clustering.clusters

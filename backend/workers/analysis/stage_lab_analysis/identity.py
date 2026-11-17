@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from math import hypot, isfinite
+from math import hypot, isfinite, sqrt
 from typing import Mapping
 
+from .reid import MIN_REID_EMBEDDING_QUALITY
 from .tracking import Track
 
 
@@ -26,6 +27,8 @@ class TrackDescriptor:
     start_center: tuple[float, float]
     end_center: tuple[float, float]
     velocity: tuple[float, float]
+    pooled_embedding: tuple[float, ...] | None = None
+    embedding_quality: float = 0.0
 
     @property
     def is_valid(self) -> bool:
@@ -41,7 +44,15 @@ class TrackDescriptor:
         ):
             return False
         optional = (self.shoulder_to_hip_ratio, self.torso_to_height_ratio)
-        return all(value is None or (isfinite(value) and value >= 0) for value in optional)
+        if not all(value is None or (isfinite(value) and value >= 0) for value in optional):
+            return False
+        if not isfinite(self.embedding_quality) or not 0 <= self.embedding_quality <= 1:
+            return False
+        if self.pooled_embedding is None:
+            return self.embedding_quality == 0.0
+        if not self.pooled_embedding or not all(isfinite(value) for value in self.pooled_embedding):
+            return False
+        return abs(sum(value * value for value in self.pooled_embedding) - 1.0) <= 1e-6
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +91,7 @@ class TrackFragmentBuilder:
         start_center = (start.box.x + start.box.width / 2, start.box.y + start.box.height / 2)
         end_center = (end.box.x + end.box.width / 2, end.box.y + end.box.height / 2)
         histogram, edge_density = self._appearance(samples)
+        pooled_embedding, embedding_quality = self._pooled_embedding(track)
         return TrackDescriptor(
             hsv_histogram=histogram,
             edge_density=edge_density,
@@ -89,7 +101,35 @@ class TrackFragmentBuilder:
             start_center=start_center,
             end_center=end_center,
             velocity=((end_center[0] - start_center[0]) / duration, (end_center[1] - start_center[1]) / duration),
+            pooled_embedding=pooled_embedding,
+            embedding_quality=embedding_quality,
         )
+
+    @staticmethod
+    def _pooled_embedding(track: Track) -> tuple[tuple[float, ...] | None, float]:
+        usable = [
+            sample.embedding
+            for sample in track.samples
+            if sample.embedding is not None
+            and sample.embedding.quality >= MIN_REID_EMBEDDING_QUALITY
+        ]
+        if not usable:
+            return None, 0.0
+        selected = sorted(usable, key=lambda item: -item.quality)[:6]
+        dimensions = len(selected[0].values)
+        if any(len(item.values) != dimensions for item in selected):
+            return None, 0.0
+        total_quality = sum(item.quality for item in selected)
+        if total_quality <= 0:
+            return None, 0.0
+        values = tuple(
+            sum(item.quality * item.values[index] for item in selected) / total_quality
+            for index in range(dimensions)
+        )
+        norm = sqrt(sum(value * value for value in values))
+        if not isfinite(norm) or norm <= 0:
+            return None, 0.0
+        return tuple(value / norm for value in values), total_quality / len(selected)
 
     @staticmethod
     def _appearance(samples: list[tuple[float, object, object]]) -> tuple[tuple[float, ...], float]:
@@ -173,7 +213,7 @@ class IdentityClusteringResult:
 class ConservativeIdentityClusterer:
     """Greedily merge only unambiguous, time-compatible track fragments."""
 
-    auto_merge_score = 0.88
+    auto_merge_score = 0.82
     auto_merge_without_pose_score = 0.93
     confirmation_score = 0.68
     max_gap_seconds = 5.0
@@ -187,19 +227,25 @@ class ConservativeIdentityClusterer:
             compatible: list[tuple[float, int, TrackFragment]] = []
             nearest_previous: TrackFragment | None = None
             for index, cluster in enumerate(clusters):
-                previous = cluster[-1]
-                if nearest_previous is None or previous.end_seconds > nearest_previous.end_seconds:
-                    nearest_previous = previous
-                score = self._score(previous, fragment)
-                if score is not None:
-                    compatible.append((score, index, previous))
+                for previous in cluster:
+                    if nearest_previous is None or previous.end_seconds > nearest_previous.end_seconds:
+                        nearest_previous = previous
+                    score = self._score(previous, fragment)
+                    if score is not None:
+                        compatible.append((score, index, previous))
             if not compatible:
                 clusters.append([fragment])
                 if nearest_previous is not None:
                     decisions.append(IdentityDecision.reject(nearest_previous.fragment_id, fragment.fragment_id))
                 continue
             score, cluster_index, previous = max(compatible, key=lambda item: (item[0], -item[1]))
-            if score >= self._automatic_merge_threshold(previous, fragment):
+            competing_scores = [candidate_score for candidate_score, candidate_index, _ in compatible if candidate_index != cluster_index]
+            has_gallery_disagreement = (
+                competing_scores
+                and max(competing_scores) >= self.confirmation_score
+                and score - max(competing_scores) < 0.08
+            )
+            if score >= self._automatic_merge_threshold(previous, fragment) and not has_gallery_disagreement:
                 clusters[cluster_index].append(fragment)
                 decisions.append(IdentityDecision.merge(previous.fragment_id, fragment.fragment_id, score))
             elif score >= self.confirmation_score:
@@ -214,6 +260,8 @@ class ConservativeIdentityClusterer:
         )
 
     def _automatic_merge_threshold(self, earlier: TrackFragment, later: TrackFragment) -> float:
+        if self._has_reid(earlier.descriptor, later.descriptor):
+            return self.auto_merge_score
         if self._pose_similarity(earlier.descriptor, later.descriptor) is None:
             return self.auto_merge_without_pose_score
         return self.auto_merge_score
@@ -229,6 +277,8 @@ class ConservativeIdentityClusterer:
         distance = hypot(later.descriptor.start_center[0] - expected_x, later.descriptor.start_center[1] - expected_y)
         if distance > self.max_unexplained_distance:
             return None
+        if self._has_reid(earlier.descriptor, later.descriptor):
+            return self._reid_similarity(earlier.descriptor, later.descriptor)
         appearance = self._appearance_similarity(earlier.descriptor, later.descriptor)
         temporal = max(0.0, 1.0 - distance / self.max_unexplained_distance)
         pose = self._pose_similarity(earlier.descriptor, later.descriptor)
@@ -246,6 +296,22 @@ class ConservativeIdentityClusterer:
         histogram_similarity = max(0.0, 1.0 - histogram_distance / 2.0)
         edge_similarity = max(0.0, 1.0 - abs(first.edge_density - second.edge_density))
         return 0.8 * histogram_similarity + 0.2 * edge_similarity
+
+    @staticmethod
+    def _has_reid(first: TrackDescriptor, second: TrackDescriptor) -> bool:
+        return (
+            first.pooled_embedding is not None
+            and second.pooled_embedding is not None
+            and first.embedding_quality >= MIN_REID_EMBEDDING_QUALITY
+            and second.embedding_quality >= MIN_REID_EMBEDDING_QUALITY
+            and len(first.pooled_embedding) == len(second.pooled_embedding)
+        )
+
+    @staticmethod
+    def _reid_similarity(first: TrackDescriptor, second: TrackDescriptor) -> float:
+        assert first.pooled_embedding is not None
+        assert second.pooled_embedding is not None
+        return max(-1.0, min(1.0, sum(left * right for left, right in zip(first.pooled_embedding, second.pooled_embedding))))
 
     @staticmethod
     def _pose_similarity(first: TrackDescriptor, second: TrackDescriptor) -> float | None:

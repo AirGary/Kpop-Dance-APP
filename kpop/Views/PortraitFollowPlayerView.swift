@@ -36,7 +36,7 @@ final class PlayerLayerView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        playerLayer.videoGravity = .resizeAspect
+        playerLayer.videoGravity = .resizeAspectFill
         backgroundColor = .black
     }
 

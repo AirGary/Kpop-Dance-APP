@@ -4,6 +4,117 @@ import Testing
 
 struct PortraitFollowGeometryTests {
     @Test
+    func memberFancamUsesNamedHeadAndAnklesToKeepTheWholeBodyInsidePortraitCrop() throws {
+        let frame = AnalysisPoseFrame(
+            timeSeconds: 12,
+            confidence: 0.92,
+            keypoints: [
+                AnalysisPoseKeypoint(name: "nose", x: 0.48, y: 0.12, confidence: 0.95),
+                AnalysisPoseKeypoint(name: "left_shoulder", x: 0.40, y: 0.28, confidence: 0.9),
+                AnalysisPoseKeypoint(name: "right_shoulder", x: 0.56, y: 0.28, confidence: 0.9),
+                AnalysisPoseKeypoint(name: "left_hip", x: 0.42, y: 0.56, confidence: 0.9),
+                AnalysisPoseKeypoint(name: "right_hip", x: 0.54, y: 0.56, confidence: 0.9),
+                AnalysisPoseKeypoint(name: "left_ankle", x: 0.39, y: 0.88, confidence: 0.9),
+                AnalysisPoseKeypoint(name: "right_ankle", x: 0.57, y: 0.88, confidence: 0.9)
+            ]
+        )
+
+        let crop = try #require(MemberFancamPlan.make(track: [frame], at: 12).crop)
+        #expect(abs(crop.width / crop.height - 9.0 / 16.0) < 0.0001)
+        #expect(crop.contains(x: 0.48, y: 0.12))
+        #expect(crop.contains(x: 0.39, y: 0.88))
+        #expect(crop.contains(x: 0.57, y: 0.88))
+    }
+
+    @Test
+    func memberFancamDoesNotTrackWhenHeadOrBothFeetAreNotReliable() {
+        let incomplete = AnalysisPoseFrame(
+            timeSeconds: 12,
+            confidence: 0.92,
+            keypoints: [
+                AnalysisPoseKeypoint(name: "left_shoulder", x: 0.4, y: 0.28, confidence: 0.9),
+                AnalysisPoseKeypoint(name: "right_shoulder", x: 0.56, y: 0.28, confidence: 0.9),
+                AnalysisPoseKeypoint(name: "left_ankle", x: 0.39, y: 0.88, confidence: 0.9)
+            ]
+        )
+
+        #expect(MemberFancamPlan.make(track: [incomplete], at: 12) == .fullSource)
+    }
+
+    @Test
+    func memberFancamInterpolatesFullBodyCropAcrossLateralMotionAndRetainsLastConfidentCrop() throws {
+        let left = AnalysisPoseFrame(
+            timeSeconds: 0,
+            confidence: 0.9,
+            keypoints: wholeBodyAnchors(centerX: 0.30)
+        )
+        let right = AnalysisPoseFrame(
+            timeSeconds: 1,
+            confidence: 0.9,
+            keypoints: wholeBodyAnchors(centerX: 0.70)
+        )
+        let uncertain = AnalysisPoseFrame(
+            timeSeconds: 2,
+            confidence: 0.3,
+            keypoints: [
+                AnalysisPoseKeypoint(name: "nose", x: 0.9, y: 0.12, confidence: 0.1),
+                AnalysisPoseKeypoint(name: "left_ankle", x: 0.8, y: 0.88, confidence: 0.1),
+                AnalysisPoseKeypoint(name: "right_ankle", x: 0.95, y: 0.88, confidence: 0.1)
+            ]
+        )
+
+        let middle = try #require(MemberFancamPlan.make(track: [left, right], at: 0.5).crop)
+        let retained = try #require(MemberFancamPlan.make(track: [right, uncertain], at: 2).crop)
+
+        #expect(abs(middle.centerX - 0.50) < 0.02)
+        #expect(retained.contains(x: 0.70, y: 0.12))
+        #expect(retained.contains(x: 0.70, y: 0.88))
+    }
+
+    @Test
+    func memberFancamExpiresLastConfidentCropAfterOneSecondGap() {
+        let first = AnalysisPoseFrame(timeSeconds: 0, confidence: 0.9, keypoints: wholeBodyAnchors(centerX: 0.30))
+        let later = AnalysisPoseFrame(timeSeconds: 10, confidence: 0.9, keypoints: wholeBodyAnchors(centerX: 0.70))
+
+        #expect(MemberFancamPlan.make(track: [first, later], at: 5) == .fullSource)
+    }
+
+    private func wholeBodyAnchors(centerX: Double) -> [AnalysisPoseKeypoint] {
+        [
+            AnalysisPoseKeypoint(name: "nose", x: centerX, y: 0.12, confidence: 0.95),
+            AnalysisPoseKeypoint(name: "left_shoulder", x: centerX - 0.08, y: 0.28, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_shoulder", x: centerX + 0.08, y: 0.28, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_ankle", x: centerX - 0.08, y: 0.88, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_ankle", x: centerX + 0.08, y: 0.88, confidence: 0.9)
+        ]
+    }
+
+    @Test
+    func skeletonUsesAnatomicalConnectionsRatherThanSerializedPointOrder() {
+        let points = [
+            AnalysisPoseKeypoint(name: "nose", x: 0.5, y: 0.1, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_shoulder", x: 0.4, y: 0.3, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_shoulder", x: 0.6, y: 0.3, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_elbow", x: 0.3, y: 0.45, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_elbow", x: 0.7, y: 0.45, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_wrist", x: 0.25, y: 0.6, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_wrist", x: 0.75, y: 0.6, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_hip", x: 0.43, y: 0.6, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_hip", x: 0.57, y: 0.6, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_knee", x: 0.42, y: 0.75, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_knee", x: 0.58, y: 0.75, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "left_ankle", x: 0.41, y: 0.92, confidence: 0.9),
+            AnalysisPoseKeypoint(name: "right_ankle", x: 0.59, y: 0.92, confidence: 0.9)
+        ]
+
+        let segments = PracticeSkeleton.segments(for: points)
+        #expect(segments.contains(.init(from: "left_shoulder", to: "left_elbow")))
+        #expect(segments.contains(.init(from: "right_hip", to: "right_knee")))
+        #expect(segments.contains(.init(from: "left_shoulder", to: "right_shoulder")))
+        #expect(segments.contains(.init(from: "left_ankle", to: "right_ankle")) == false)
+    }
+
+    @Test
     func trackingPresentationShowsFallbackOnlyWhenNoReliableCropExists() {
         let crop = NormalizedRect(minX: 0.2, minY: 0, width: 0.5625, height: 1)
 

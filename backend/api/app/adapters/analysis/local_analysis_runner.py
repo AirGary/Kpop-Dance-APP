@@ -23,11 +23,17 @@ class LocalAnalysisRunner(AnalysisRunner):
         python_path: Path,
         *,
         frame_stride: int = 6,
+        candidate_frame_stride: int = 6,
     ) -> None:
         self._workspace_root = workspace_root.resolve()
         self._worker_root = worker_root.resolve()
         self._model_root = model_root.resolve()
+        if frame_stride < 1:
+            raise ValueError("frame stride must be positive")
+        if candidate_frame_stride < 1:
+            raise ValueError("candidate frame stride must be positive")
         self._frame_stride = frame_stride
+        self._candidate_frame_stride = candidate_frame_stride
         # Keep the virtualenv launcher symlink so sys.prefix remains the local AI environment.
         self._python_path = python_path.absolute()
         self._processes: set[asyncio.subprocess.Process] = set()
@@ -68,7 +74,12 @@ class LocalAnalysisRunner(AnalysisRunner):
         ]
         if candidate_id is not None:
             command.extend(["--candidate-id", candidate_id])
-        command.extend(["--frame-stride", str(self._frame_stride)])
+        command.extend([
+            "--frame-stride",
+            str(self._frame_stride),
+            "--candidate-frame-stride",
+            str(self._candidate_frame_stride),
+        ])
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(self._worker_root)
         process = await asyncio.create_subprocess_exec(

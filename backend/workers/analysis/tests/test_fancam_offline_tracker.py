@@ -19,6 +19,200 @@ def observation(t, xs, features=None):
     return t, detections, tuple(features or [None] * len(xs))
 
 
+def history_rows(xs=(.32, .30, .40, .38), *, width=.3, height=.6):
+    return tuple((i / 10, (Detection(i / 10,
+        NormalizedBox(x, .3, width, height), .95),), (None,))
+        for i, x in enumerate(xs))
+
+
+def history_links(rows, cameras=None, *, reverse=False):
+    module = importlib.import_module('stage_lab_analysis.fancam_demo.offline_tracker')
+    cameras = cameras or ((None,) + ((1., 0., 0.),) * (len(rows) - 1))
+    original = (module._directional_links(rows, cameras)
+                & module._directional_links(rows, cameras, reverse=True))
+    return module._directional_links(rows, cameras, reverse=reverse,
+                                     reciprocal_history=frozenset(original))
+
+
+def test_bounded_history_recovers_endpoint_edge_between_agreeing_anchors():
+    rows = history_rows()
+    anchors = ({0: rows[0][1][0].box}, {}, {}, {0: rows[3][1][0].box})
+    paths, inferred = stitch(rows, anchors, member_count=1,
+        camera_transforms=(None,) + ((1., 0., 0.),) * 3)
+    assert all(path.get(0) == rows[i][1][0].box for i, path in enumerate(paths))
+    assert inferred == (frozenset(), frozenset({0}), frozenset({0}), frozenset())
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_bounded_history_links_endpoints_without_branch_or_skip(reverse):
+    links = history_links(history_rows(), reverse=reverse)
+    assert links == {((0, 0), (1, 0)), ((1, 0), (2, 0)), ((2, 0), (3, 0))}
+
+
+def test_bounded_history_cannot_reuse_rescued_node_after_ordinary_link():
+    rows = history_rows((.30, .34, .28, .32, .265, .31), width=.05, height=.2)
+    links = history_links(rows)
+    assert ((1, 0), (2, 0)) in links
+    assert ((2, 0), (3, 0)) in links
+    assert ((3, 0), (4, 0)) not in links
+    # Clean original support after the rejected edge remains usable.
+    clean = history_rows((.30, .34, .28, .32, .33, .275), width=.05, height=.2)
+    assert ((4, 0), (5, 0)) in history_links(clean)
+
+
+def test_bounded_history_requires_original_reciprocal_support():
+    rows = history_rows((.34, .30, .358, .32), width=.05, height=.2)
+    rows = ((0., rows[0][1] + (Detection(0., NormalizedBox(.30, .3, .05, .2), .2),),
+             (None, None)),) + rows[1:]
+    module = importlib.import_module('stage_lab_analysis.fancam_demo.offline_tracker')
+    cameras = (None,) + ((1., 0., 0.),) * 3
+    assert ((0, 0), (1, 0)) in module._directional_links(rows, cameras)
+    assert ((0, 1), (1, 0)) in module._directional_links(rows, cameras, reverse=True)
+    assert ((1, 0), (2, 0)) not in history_links(rows)
+
+
+@pytest.mark.parametrize('index', [1, 2])
+@pytest.mark.parametrize('camera', [None, False])
+def test_bounded_history_requires_two_known_camera_transforms(index, camera):
+    cameras = [None] + [(1., 0., 0.)] * 3
+    cameras[index] = camera
+    assert ((1, 0), (2, 0)) not in history_links(history_rows(), tuple(cameras))
+
+
+@pytest.mark.parametrize('mode', ['confidence', 'size', 'distance', 'appearance'])
+def test_bounded_history_preserves_direct_hard_gates(mode):
+    rows = list(history_rows())
+    t, ds, es = rows[2]
+    if mode == 'confidence':
+        ds = (Detection(t, ds[0].box, .09),)
+    elif mode == 'size':
+        ds = (Detection(t, NormalizedBox(.4, .3, .1, .2), .95),)
+    elif mode == 'distance':
+        ds = (Detection(t, NormalizedBox(.7, .3, .3, .6), .95),)
+    else:
+        rows = [(time, detections, (PersonEmbedding((1., 0.), 1.),))
+                for time, detections, _ in rows]
+        es = (PersonEmbedding((0., 1.), 1.),)
+    rows[2] = t, ds, es
+    assert ((1, 0), (2, 0)) not in history_links(tuple(rows))
+
+
+def test_bounded_history_keeps_direct_row_and_column_options():
+    rows = list(history_rows())
+    t, ds, _ = rows[2]
+    rows[2] = t, ds + (Detection(t, NormalizedBox(.301, .3, .3, .6), .95),), (None, None)
+    links = history_links(tuple(rows))
+    assert ((1, 0), (2, 1)) in links
+    assert ((1, 0), (2, 0)) not in links
+
+
+def test_bounded_history_rejects_ambiguous_assignment():
+    rows = list(history_rows())
+    t, ds, _ = rows[2]
+    rows[2] = t, ds * 2, (None, None)
+    assert not any(left == (1, 0) for left, _ in history_links(tuple(rows)))
+
+
+def test_bounded_history_preserves_another_endpoints_direct_column_option():
+    rows = list(history_rows())
+    t, ds, _ = rows[1]
+    rows[1] = t, ds + (Detection(t, NormalizedBox(.41, .3, .3, .6), .95),), (None, None)
+    links = history_links(tuple(rows))
+    assert ((1, 1), (2, 0)) in links
+    assert ((1, 0), (2, 0)) not in links
+
+
+@pytest.mark.parametrize('step, expected', [(.25, True), (.3, False)])
+def test_bounded_history_elapsed_time_is_bounded(step, expected):
+    rows = tuple((i * step, tuple(Detection(i * step, d.box, d.confidence) for d in ds), es)
+                 for i, (_, ds, es) in enumerate(history_rows((.32, .30, .44, .42))))
+    assert (((1, 0), (2, 0)) in history_links(rows)) is expected
+
+
+def test_bounded_history_cannot_span_a_missing_adjacent_frame():
+    rows = history_rows((.32, .30, .35, .42, .40))
+    rows = rows[:2] + ((.2, (), ()),) + rows[3:]
+    assert ((1, 0), (3, 0)) not in history_links(rows)
+
+
+def test_bounded_history_one_direction_is_insufficient_for_identity_inference():
+    rows = history_rows((.32, .30, .40, .43))
+    assert ((1, 0), (2, 0)) in history_links(rows)
+    assert ((1, 0), (2, 0)) not in history_links(rows, reverse=True)
+    anchors = ({0: rows[0][1][0].box}, {}, {}, {0: rows[3][1][0].box})
+    paths, inferred = stitch(rows, anchors, member_count=1,
+        camera_transforms=(None,) + ((1., 0., 0.),) * 3)
+    assert paths == anchors
+    assert not any(inferred)
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_bounded_history_composes_scale_translation_in_traversal_order(reverse, monkeypatch):
+    # Apply a different camera transform to each frame of the same local motion.
+    cameras = (None, (.9, .08, -.01), (1.1, -.025, .015), (.95, .01, -.005))
+    rows = []
+    scale, dx, dy = 1., 0., 0.
+    for i, (t, ds, es) in enumerate(history_rows()):
+        if i:
+            s, x, y = cameras[i]
+            scale, dx, dy = s * scale, s * dx + x, s * dy + y
+        box = ds[0].box
+        rows.append((t, (Detection(t, NormalizedBox(scale * box.x + dx,
+            scale * box.y + dy, scale * box.width, scale * box.height), .95),), es))
+    module = importlib.import_module('stage_lab_analysis.fancam_demo.offline_tracker')
+    original_cost = module._association_cost
+    projections = []
+    source, target = (3, 1) if reverse else (0, 2)
+
+    def capture(old, old_embedding, predicted, detection, embedding, dt):
+        if old == rows[source][1][0].box and detection is rows[target][1][0]:
+            projections.append(predicted)
+        return original_cost(old, old_embedding, predicted, detection, embedding, dt)
+
+    monkeypatch.setattr(module, '_association_cost', capture)
+    assert history_links(tuple(rows), cameras, reverse=reverse) == {
+        ((0, 0), (1, 0)), ((1, 0), (2, 0)), ((2, 0), (3, 0))}
+    box = rows[source][1][0].box
+    transforms = (cameras[3], cameras[2]) if reverse else cameras[1:3]
+    x, y, width, height = box.x, box.y, box.width, box.height
+    for scale, dx, dy in transforms:
+        if reverse:
+            scale, dx, dy = 1 / scale, -dx / scale, -dy / scale
+        x, y, width, height = scale * x + dx, scale * y + dy, scale * width, scale * height
+    assert projections
+    assert any((p.x, p.y, p.width, p.height) == pytest.approx((x, y, width, height))
+               for p in projections)
+
+
+def test_bounded_history_does_not_clamp_between_camera_transforms():
+    rows = history_rows((.62, .70, .70, .68))
+    cameras = (None, (1., .15, 0.), (1., -.15, 0.), (1., 0., 0.))
+    assert ((1, 0), (2, 0)) in history_links(rows, cameras)
+    anchors = ({0: rows[0][1][0].box}, {}, {}, {0: rows[3][1][0].box})
+    paths, _ = stitch(rows, anchors, member_count=1, camera_transforms=cameras)
+    assert all(path.get(0) == rows[i][1][0].box for i, path in enumerate(paths))
+
+
+def test_bounded_history_conflicting_anchors_still_reject():
+    rows = history_rows()
+    anchors = ({0: rows[0][1][0].box}, {}, {}, {1: rows[3][1][0].box})
+    paths, inferred = stitch(rows, anchors, member_count=2,
+        camera_transforms=(None,) + ((1., 0., 0.),) * 3)
+    assert paths == anchors
+    assert not any(inferred)
+
+
+def test_bounded_history_global_same_member_exclusion_still_rejects_span():
+    rows = list(history_rows())
+    t, ds, _ = rows[1]
+    rows[1] = t, ds + (Detection(t, NormalizedBox(.01, .01, .05, .2), .95),), (None, None)
+    anchors = ({0: rows[0][1][0].box}, {0: rows[1][1][1].box}, {}, {0: rows[3][1][0].box})
+    paths, inferred = stitch(tuple(rows), anchors, member_count=1,
+        camera_transforms=(None,) + ((1., 0., 0.),) * 3)
+    assert paths == anchors
+    assert not any(inferred)
+
+
 def test_two_sided_five_member_path_recovers_real_detections_without_features():
     observations = tuple(observation(i / 10, [.05, .22 + i * .002, .44, .63, .82])
                          for i in range(21))

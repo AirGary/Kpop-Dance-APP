@@ -30,8 +30,13 @@ class Pose:
 
 def _clusters(analysis: Path) -> None:
     (analysis / "candidates").mkdir(parents=True)
-    for name in ("candidate-1-3.jpg", "candidate-2-1.jpg"):
+    for name in ("candidate-1-1.jpg", "candidate-1-3.jpg", "candidate-2-1.jpg", "candidate-2-3.jpg"):
         (analysis / "candidates" / name).write_bytes(b"synthetic-private-crop")
+    fragments = analysis / "identity-fragments"
+    fragments.mkdir()
+    for fragment_id in (1, 2, 3):
+        for index in (1, 3):
+            (fragments / f"fragment-{fragment_id}-{index}.jpg").write_bytes(b"synthetic-private-crop")
     (analysis / "identity-clusters.json").write_text(json.dumps({
         "fragments": [
             {"fragmentId": 1, "startSeconds": 1, "endSeconds": 1.5},
@@ -115,6 +120,56 @@ def test_different_excludes_confirmation_interval_and_cli_writes_unchanged_packa
         assert tuple(sorted(archive.namelist())) == (
             "confidence.json", "manifest.json", "pose-track.json", "spotlight-track.json", "timeline.json"
         )
+
+
+def test_selected_later_fragment_pauses_for_the_reverse_ambiguous_boundary(tmp_path: Path) -> None:
+    """A longest candidate can start after an uncertain predecessor."""
+    analysis = tmp_path / "analysis"
+    _clusters(analysis)
+
+    awaiting = _worker()._checkpointed_target_result(
+        analysis, "candidate-2", (2,), _frames(), Pose(), ()
+    )
+
+    assert isinstance(awaiting, TargetAnalysisAwaitingConfirmation)
+    assert awaiting.confirmation.previous_interval == (2.0, 2.5)
+    assert awaiting.confirmation.candidate_interval == (1.0, 1.5)
+    assert not (analysis / "target-checkpoints").exists()
+
+
+def test_confirmation_normalizes_a_single_sample_fragment_interval(tmp_path: Path) -> None:
+    analysis = tmp_path / "analysis"
+    _clusters(analysis)
+    payload = json.loads((analysis / "identity-clusters.json").read_text(encoding="utf-8"))
+    payload["fragments"][0]["endSeconds"] = payload["fragments"][0]["startSeconds"]
+    (analysis / "identity-clusters.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    awaiting = _worker()._checkpointed_target_result(
+        analysis, "candidate-2", (2,), _frames(), Pose(), ()
+    )
+
+    assert isinstance(awaiting, TargetAnalysisAwaitingConfirmation)
+    assert awaiting.confirmation.candidate_interval == (1.0, 1.001)
+
+
+def test_confirmation_uses_private_fragment_crops_for_a_boundary_outside_displayed_candidates(tmp_path: Path) -> None:
+    analysis = tmp_path / "analysis"
+    _clusters(analysis)
+    payload = json.loads((analysis / "identity-clusters.json").read_text(encoding="utf-8"))
+    payload["candidateClusters"] = {"candidate-2": [2]}
+    (analysis / "identity-clusters.json").write_text(json.dumps(payload), encoding="utf-8")
+    fragment_directory = analysis / "identity-fragments"
+    for name in ("fragment-1-1.jpg", "fragment-2-3.jpg"):
+        (fragment_directory / name).write_bytes(b"synthetic-private-crop")
+
+    awaiting = _worker()._checkpointed_target_result(
+        analysis, "candidate-2", (2,), _frames(), Pose(), ()
+    )
+
+    assert isinstance(awaiting, TargetAnalysisAwaitingConfirmation)
+    assert awaiting.confirmation.previous_image_path == "analysis/identity-fragments/fragment-2-3.jpg"
+    assert awaiting.confirmation.candidate_image_path == "analysis/identity-fragments/fragment-1-1.jpg"
+    assert awaiting.confirmation.candidate_cluster_id == "fragment-1"
 
 
 def test_worker_cli_main_keeps_diagnostics_out_of_awaiting_and_completed_json(monkeypatch, tmp_path: Path, capsys) -> None:

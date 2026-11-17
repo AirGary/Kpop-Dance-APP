@@ -4,6 +4,11 @@ import Testing
 
 struct JobsAPIConfigurationTests {
     @Test
+    func debugConfigurationRequiresExplicitLauncherEnvironment() {
+        #expect(JobsAPIConfiguration.debugConfiguration(from: [:]) == nil)
+    }
+
+    @Test
     func developmentInfoCreatesLocalConfiguration() throws {
         let result = try JobsAPIConfiguration.from(infoDictionary: [
             "STAGE_LAB_ENVIRONMENT": "development",

@@ -163,7 +163,7 @@ struct AnalysisView: View {
             }
 
             if uploadRunner == nil {
-                Text("视频上传仅在 Debug 模拟器版本启用。")
+                Text("本地分析服务尚未配置。请通过本地 Demo 启动脚本启动服务后重新打开 App。")
                     .font(.caption)
                     .foregroundStyle(AppUI.inkSoft)
             }
@@ -286,7 +286,7 @@ struct AnalysisView: View {
             }
 
             if jobsAPIClient == nil {
-                Text("本地 API 仅在 Debug 模拟器版本启用。")
+                Text("本地分析服务尚未配置。请通过本地 Demo 启动脚本启动服务后重新打开 App。")
                     .font(.caption)
                     .foregroundStyle(AppUI.inkSoft)
             }
