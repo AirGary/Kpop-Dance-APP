@@ -130,6 +130,7 @@ class AppContainer:
             model_root,
             repository_root / ".local-ai" / "venv" / "bin" / "python",
             frame_stride=settings.local_ai_frame_stride,
+            candidate_frame_stride=settings.local_ai_candidate_frame_stride,
         )
         coordinator = AnalysisCoordinator(job_service, analysis_repository, workspace, runner)
         upload_service = UploadService(

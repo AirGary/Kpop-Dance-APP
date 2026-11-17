@@ -11,6 +11,7 @@ readonly default_bind="127.0.0.1"
 bind="$default_bind"
 port="8000"
 frame_stride="${LOCAL_AI_FRAME_STRIDE:-30}"
+candidate_frame_stride="${LOCAL_AI_CANDIDATE_FRAME_STRIDE:-6}"
 server_pid=""
 runtime_dir=""
 
@@ -98,6 +99,7 @@ export APP_ENVIRONMENT="local-ai"
 export OBJECT_STORAGE_ROOT="$runtime_dir/objects"
 export LOCAL_AI_MODEL_ROOT="$local_root/models"
 export LOCAL_AI_FRAME_STRIDE="$frame_stride"
+export LOCAL_AI_CANDIDATE_FRAME_STRIDE="$candidate_frame_stride"
 export STAGE_LAB_PAIRING_TOKEN="$pairing_token"
 
 (

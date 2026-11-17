@@ -15,6 +15,7 @@ struct UploadAPIClientTests {
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer dev-user-a")
             #expect(request.value(forHTTPHeaderField: "Idempotency-Key") == "create-key")
             #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            #expect(request.timeoutInterval == UploadAPIClient.requestTimeout)
             let body = try #require(request.httpBody)
             let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
             #expect(json["projectId"] as? String == self.projectID.uuidString.lowercased())

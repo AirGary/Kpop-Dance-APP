@@ -2,6 +2,23 @@ import AVFoundation
 import CoreGraphics
 
 enum PortraitFollowCompositionBuilder {
+    struct TimedFrame: Equatable, Sendable {
+        let timeSeconds: Double
+        let frame: PortraitFollowFrame
+    }
+
+    static func memberFancamTimedFrames(for poseTrack: [AnalysisPoseFrame]) -> [TimedFrame] {
+        let orderedTrack = poseTrack
+            .filter { $0.timeSeconds.isFinite }
+            .sorted { $0.timeSeconds < $1.timeSeconds }
+        return orderedTrack.map { frame in
+            TimedFrame(
+                timeSeconds: frame.timeSeconds,
+                frame: MemberFancamPlan.make(track: orderedTrack, at: frame.timeSeconds)
+            )
+        }
+    }
+
     static func makeItem(asset: AVAsset, frames: [PortraitFollowFrame]) async throws -> AVPlayerItem {
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let track = tracks.first else {
@@ -39,6 +56,70 @@ enum PortraitFollowCompositionBuilder {
         let item = AVPlayerItem(asset: asset)
         item.videoComposition = composition
         return item
+    }
+
+    static func makeItem(asset: AVAsset, timedFrames: [TimedFrame]) async throws -> AVPlayerItem {
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        guard let track = tracks.first else { return AVPlayerItem(asset: asset) }
+        let duration = try await asset.load(.duration)
+        let naturalSize = try await track.load(.naturalSize)
+        let preferredTransform = try await track.load(.preferredTransform)
+        let sourceBounds = CGRect(origin: .zero, size: naturalSize)
+        let uprightBounds = sourceBounds.applying(preferredTransform).standardized
+        guard sourceBounds.width > 0, sourceBounds.height > 0,
+              uprightBounds.width > 0, uprightBounds.height > 0,
+              duration.isNumeric, duration > .zero else { return AVPlayerItem(asset: asset) }
+
+        let valid = timedFrames
+            .filter { $0.timeSeconds.isFinite && $0.timeSeconds >= 0 && $0.timeSeconds < duration.seconds }
+            .sorted { $0.timeSeconds < $1.timeSeconds }
+        guard valid.isEmpty == false else { return AVPlayerItem(asset: asset) }
+        let renderSize = portraitRenderSize(for: uprightBounds.size)
+        let composition = AVMutableVideoComposition()
+        composition.renderSize = renderSize
+        composition.frameDuration = CMTime(value: 1, timescale: 30)
+        composition.instructions = makeTimedInstructions(
+            track: track, duration: duration, sourceBounds: sourceBounds, uprightBounds: uprightBounds,
+            preferredTransform: preferredTransform, renderSize: renderSize, frames: valid
+        )
+        let item = AVPlayerItem(asset: asset)
+        item.videoComposition = composition
+        return item
+    }
+
+    private static func makeTimedInstructions(
+        track: AVAssetTrack,
+        duration: CMTime,
+        sourceBounds: CGRect,
+        uprightBounds: CGRect,
+        preferredTransform: CGAffineTransform,
+        renderSize: CGSize,
+        frames: [TimedFrame]
+    ) -> [AVVideoCompositionInstructionProtocol] {
+        let initial = TimedFrame(timeSeconds: 0, frame: .fullSource)
+        let allFrames = (frames.first?.timeSeconds ?? 0) > 0 ? [initial] + frames : frames
+        return allFrames.indices.compactMap { index in
+            let start = allFrames[index]
+            let endTime = index + 1 < allFrames.count ? allFrames[index + 1].timeSeconds : duration.seconds
+            guard endTime > start.timeSeconds else { return nil }
+            let startCrop = cropRectangle(for: start.frame, sourceBounds: sourceBounds, uprightBounds: uprightBounds, preferredTransform: preferredTransform) ?? sourceBounds
+            let endCrop = index + 1 < allFrames.count
+                ? (cropRectangle(for: allFrames[index + 1].frame, sourceBounds: sourceBounds, uprightBounds: uprightBounds, preferredTransform: preferredTransform) ?? sourceBounds)
+                : startCrop
+            let isTracking = start.frame.crop != nil && (index + 1 == allFrames.count || allFrames[index + 1].frame.crop != nil)
+            let timeRange = CMTimeRange(start: CMTime(seconds: start.timeSeconds, preferredTimescale: 600), duration: CMTime(seconds: endTime - start.timeSeconds, preferredTimescale: 600))
+            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
+            layer.setCropRectangleRamp(fromStartCropRectangle: startCrop, toEndCropRectangle: endCrop, timeRange: timeRange)
+            layer.setTransformRamp(
+                fromStart: transform(for: startCrop, isTracking: isTracking, uprightBounds: uprightBounds, preferredTransform: preferredTransform, renderSize: renderSize),
+                toEnd: transform(for: endCrop, isTracking: isTracking, uprightBounds: uprightBounds, preferredTransform: preferredTransform, renderSize: renderSize),
+                timeRange: timeRange
+            )
+            let instruction = AVMutableVideoCompositionInstruction()
+            instruction.timeRange = timeRange
+            instruction.layerInstructions = [layer]
+            return instruction
+        }
     }
 
     private static func portraitRenderSize(for sourceSize: CGSize) -> CGSize {

@@ -13,10 +13,152 @@ struct PracticeView: View {
     @State private var loopEnabled = false
     @State private var analysisPackage: AnalysisPackage?
     @State private var showSkeleton = true
+    @State private var showControls = false
     @State private var followCompositionAvailable = false
     @State private var sourceAspectRatio = 16.0 / 9.0
 
     var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let player {
+                PracticeStageView(
+                    player: player,
+                    title: project.title,
+                    dancerName: project.selectedDancerName ?? "已选舞者",
+                    currentTime: currentTime,
+                    totalDuration: safeDuration,
+                    isMirrored: project.mirrorEnabled,
+                    isPlaying: isPlaying,
+                    playbackRateTitle: project.playbackRate.title,
+                    analysisPackage: analysisPackage,
+                    followFrame: activeFollowFrame,
+                    followStatus: activeFollowStatus,
+                    sourceAspectRatio: sourceAspectRatio,
+                    showSkeleton: showSkeleton,
+                    onTogglePlayback: togglePlayback
+                )
+                .ignoresSafeArea()
+            } else {
+                PracticeUnavailableView(sourceVideoName: project.sourceVideoName)
+                    .padding(20)
+            }
+
+            VStack(spacing: 0) {
+                HStack {
+                    Button { router.popToRoot() } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.headline.weight(.bold))
+                            .frame(width: 44, height: 44)
+                            .background(.black.opacity(0.42), in: Circle())
+                    }
+                    Spacer()
+                    Text("Fancam · Member")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.42), in: Capsule())
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+
+                Spacer()
+
+                VStack(spacing: 10) {
+                    Slider(value: playbackTimeBinding, in: 0...safeDuration)
+                        .tint(AppUI.violet)
+                        .disabled(player == nil)
+                    HStack {
+                        Text(timeLabel(for: currentTime))
+                        Spacer()
+                        Text(timeLabel(for: safeDuration))
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+
+                    HStack(spacing: 18) {
+                        Button(action: togglePlayback) {
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .font(.title3.weight(.bold))
+                                .frame(width: 50, height: 50)
+                                .background(.white, in: Circle())
+                                .foregroundStyle(.black)
+                        }
+                        .disabled(player == nil)
+
+                        Text(project.playbackRate.title)
+                            .font(.headline.monospacedDigit())
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button { showSkeleton.toggle() } label: {
+                            Image(systemName: showSkeleton ? "figure.stand" : "figure.stand.line.dotted.figure")
+                                .frame(width: 42, height: 42)
+                                .background(.white.opacity(0.16), in: Circle())
+                        }
+                        Button { showControls = true } label: {
+                            Image(systemName: "slider.horizontal.3")
+                                .frame(width: 42, height: 42)
+                                .background(.white.opacity(0.16), in: Circle())
+                        }
+                    }
+                    .foregroundStyle(.white)
+                }
+                .padding(16)
+                .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .padding(.horizontal, 14)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showControls) {
+            NavigationStack {
+                Form {
+                    Picker("播放速度", selection: playbackRateBinding) {
+                        ForEach(PlaybackRate.allCases) { rate in
+                            Text(rate.title).tag(rate)
+                        }
+                    }
+                    Toggle("镜像模式", isOn: mirrorBinding)
+                    Toggle("片段循环", isOn: $loopEnabled)
+                    Toggle("显示目标骨架", isOn: $showSkeleton)
+                }
+                .navigationTitle("练习控制")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { showControls = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .onAppear {
+            if project.phase == .readyToPractice {
+                project.phase = .practicing
+                touch()
+            }
+        }
+        .onDisappear { cleanupPlayer() }
+        .task(id: playerPreparationID) {
+            loadAnalysisPackage()
+            await preparePlayer()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { notification in
+            guard let currentItem = player?.currentItem, notification.object as? AVPlayerItem === currentItem else { return }
+            if loopEnabled {
+                seek(to: 0)
+                player?.play()
+                player?.rate = Float(project.playbackRate.rawValue)
+                isPlaying = true
+            } else {
+                isPlaying = false
+                currentTime = safeDuration
+            }
+        }
+    }
+
+    private var legacyBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 14) {
@@ -67,7 +209,10 @@ struct PracticeView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppUI.inkSoft)
 
-                    HStack(spacing: 12) {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 12), count: 3),
+                        spacing: 12
+                    ) {
                         Button {
                             togglePlayback()
                         } label: {
@@ -99,7 +244,10 @@ struct PracticeView: View {
                     .pickerStyle(.segmented)
                     .disabled(player == nil)
 
-                    HStack(spacing: 12) {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 12), count: 3),
+                        spacing: 12
+                    ) {
                         ToggleCard(
                             title: "镜像模式",
                             detail: "适合照镜子跟练",
@@ -124,7 +272,10 @@ struct PracticeView: View {
                         )
                     }
 
-                    HStack(spacing: 10) {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 10), count: 3),
+                        spacing: 10
+                    ) {
                         ControlChip(title: "Beat", icon: "metronome", color: AppUI.cyan)
                         ControlChip(title: loopEnabled ? "Loop On" : "Loop Off", icon: "repeat", color: loopEnabled ? AppUI.violet : .secondary)
                         ControlChip(title: project.mirrorEnabled ? "Mirror" : "Normal", icon: "rectangle.triangle.2.outward", color: project.mirrorEnabled ? AppUI.coral : .secondary)
@@ -242,7 +393,7 @@ struct PracticeView: View {
         guard followCompositionAvailable, let analysisPackage else {
             return .fullSource
         }
-        return PortraitFollowPlan.make(track: analysisPackage.spotlightTrack, at: currentTime)
+        return MemberFancamPlan.make(track: analysisPackage.poseTrack, at: currentTime)
     }
 
     private var activeFollowStatus: PracticeFollowStatus {
@@ -328,15 +479,14 @@ struct PracticeView: View {
         let preparedItem: AVPlayerItem
         var hasFollowComposition = false
 
-        if let package, package.spotlightTrack.isEmpty == false {
-            let orderedTrack = package.spotlightTrack.sorted { $0.timeSeconds < $1.timeSeconds }
-            let frames = orderedTrack.map {
-                PortraitFollowPlan.make(track: orderedTrack, at: $0.timeSeconds)
-            }
+        if let package, package.poseTrack.isEmpty == false {
+            let frames = PortraitFollowCompositionBuilder.memberFancamTimedFrames(
+                for: package.poseTrack
+            )
             do {
                 preparedItem = try await PortraitFollowCompositionBuilder.makeItem(
                     asset: asset,
-                    frames: frames
+                    timedFrames: frames
                 )
                 hasFollowComposition = preparedItem.videoComposition != nil
             } catch {
@@ -565,14 +715,8 @@ private struct PracticeStageView: View {
                 Spacer()
             }
         }
-        .aspectRatio(9.0 / 16.0, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .background(.black, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 30, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.black)
         .accessibilityLabel("练习视频预览")
     }
 
@@ -610,47 +754,31 @@ private struct PracticeAnalysisOverlay: View {
     var body: some View {
         GeometryReader { _ in
             Canvas { context, size in
-                if let spotlight = nearestSpotlight,
-                   let rect = PracticeOverlayProjection.project(
-                       NormalizedRect(
-                           minX: spotlight.x,
-                           minY: spotlight.y,
-                           width: spotlight.width,
-                           height: spotlight.height
-                       ),
-                       in: followFrame,
-                       sourceAspectRatio: sourceAspectRatio,
-                       canvasSize: size
-                   ) {
-                    context.stroke(Path(roundedRect: rect, cornerRadius: 12), with: .color(.yellow), lineWidth: 3)
-                }
-
                 guard showSkeleton, let frame = nearestPose else { return }
-                let points = frame.keypoints.compactMap { keypoint in
-                    PracticeOverlayProjection.project(
-                        CGPoint(x: keypoint.x, y: keypoint.y),
-                        in: followFrame,
-                        sourceAspectRatio: sourceAspectRatio,
-                        canvasSize: size
-                    )
-                }
-                for point in points {
+                let projected: [String: CGPoint] = Dictionary(uniqueKeysWithValues: frame.keypoints.compactMap { keypoint in
+                    guard keypoint.confidence >= 0.5,
+                          let point = PracticeOverlayProjection.project(
+                            CGPoint(x: keypoint.x, y: keypoint.y),
+                            in: followFrame,
+                            sourceAspectRatio: sourceAspectRatio,
+                            canvasSize: size
+                          ) else { return nil }
+                    return (keypoint.name, point)
+                })
+                for point in projected.values {
                     context.fill(Path(ellipseIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)), with: .color(.cyan))
                 }
-                for pair in zip(points, points.dropFirst()) {
+                for segment in PracticeSkeleton.segments(for: frame.keypoints) {
+                    guard let start = projected[segment.from], let end = projected[segment.to] else { continue }
                     var path = Path()
-                    path.move(to: pair.0)
-                    path.addLine(to: pair.1)
+                    path.move(to: start)
+                    path.addLine(to: end)
                     context.stroke(path, with: .color(.cyan.opacity(0.72)), lineWidth: 2)
                 }
             }
             .scaleEffect(x: isMirrored ? -1 : 1, y: 1)
         }
         .allowsHitTesting(false)
-    }
-
-    private var nearestSpotlight: AnalysisSpotlightKeyframe? {
-        package.spotlightTrack.min { abs($0.timeSeconds - currentTime) < abs($1.timeSeconds - currentTime) }
     }
 
     private var nearestPose: AnalysisPoseFrame? {

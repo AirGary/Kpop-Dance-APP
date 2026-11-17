@@ -42,7 +42,6 @@ nonisolated enum IdentityDecisionValue: String, Codable, Equatable, Sendable {
 
 nonisolated struct IdentityConfirmationDTO: Decodable, Equatable, Sendable {
     let confirmationId: String
-    let kind: String
     let previousImagePath: String
     let candidateImagePath: String
     let previousInterval: AnalysisAppearanceIntervalDTO

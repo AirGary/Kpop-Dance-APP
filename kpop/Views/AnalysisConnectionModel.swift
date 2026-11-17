@@ -31,9 +31,6 @@ final class AnalysisConnectionModel {
                 return
             }
 
-            project.remoteJobId = confirmed.id.uuidString
-            project.sourceFingerprint = input.request.sourceFingerprint
-            project.updatedAt = Date()
             state = .connected(confirmed)
         } catch let error as JobCreationInputError {
             state = .failed(Self.message(for: error))

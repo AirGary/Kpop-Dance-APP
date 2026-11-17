@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from math import sqrt
 from pathlib import Path
 
 from stage_lab_analysis.candidates import Candidate, CandidateSet
@@ -26,6 +27,8 @@ def fragment(
     edge_density: float = 0.2,
     center_x: float = 0.5,
     velocity_x: float = 0.0,
+    pooled_embedding: tuple[float, ...] | None = None,
+    embedding_quality: float = 0.0,
 ) -> TrackFragment:
     track = Track(
         track_id=track_id,
@@ -46,8 +49,14 @@ def fragment(
             start_center=(center_x, 0.45),
             end_center=(center_x, 0.45),
             velocity=(velocity_x, 0.0),
+            pooled_embedding=pooled_embedding,
+            embedding_quality=embedding_quality,
         ),
     )
+
+
+def normalized_embedding(similarity_to_first: float) -> tuple[float, float]:
+    return similarity_to_first, sqrt(1.0 - similarity_to_first * similarity_to_first)
 
 
 def test_high_confidence_adjacent_fragments_merge_into_one_cluster() -> None:
@@ -79,6 +88,54 @@ def test_confirmation_band_never_merges_ambiguous_fragments() -> None:
 
     assert [cluster.fragment_ids for cluster in result.clusters] == [(1,), (2,)]
     assert result.decisions[0].kind is IdentityDecision.awaiting_confirmation(1, 2).kind
+
+
+def test_ambiguous_reid_pair_requires_confirmation_instead_of_an_automatic_merge() -> None:
+    first = fragment(
+        1,
+        start=0,
+        end=2,
+        histogram=(1.0, 0.0, 0.0),
+        pooled_embedding=normalized_embedding(1.0),
+        embedding_quality=0.9,
+    )
+    ambiguous = fragment(
+        2,
+        start=2.2,
+        end=4,
+        histogram=(0.0, 0.0, 1.0),
+        pooled_embedding=normalized_embedding(0.75),
+        embedding_quality=0.9,
+    )
+
+    result = ConservativeIdentityClusterer().cluster((first, ambiguous))
+
+    assert [cluster.fragment_ids for cluster in result.clusters] == [(1,), (2,)]
+    assert result.decisions == (IdentityDecision.awaiting_confirmation(1, 2, 0.75),)
+
+
+def test_low_quality_reid_does_not_automatically_merge_distinct_fragments() -> None:
+    first = fragment(
+        1,
+        start=0,
+        end=2,
+        histogram=(1.0, 0.0, 0.0),
+        pooled_embedding=normalized_embedding(1.0),
+        embedding_quality=0.001,
+    )
+    second = fragment(
+        2,
+        start=2.2,
+        end=4,
+        histogram=(0.0, 0.0, 1.0),
+        pooled_embedding=normalized_embedding(1.0),
+        embedding_quality=0.001,
+    )
+
+    result = ConservativeIdentityClusterer().cluster((first, second))
+
+    assert len(result.decisions) == 1
+    assert result.decisions[0].kind is IdentityDecision.reject(1, 2).kind
 
 
 def test_missing_pose_requires_the_stricter_automatic_merge_threshold() -> None:

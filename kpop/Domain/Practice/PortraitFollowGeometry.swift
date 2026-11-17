@@ -270,6 +270,122 @@ nonisolated enum PortraitFollowPlan {
     }
 }
 
+nonisolated enum MemberFancamPlan {
+    private static let minimumPointConfidence = 0.5
+    private static let maximumGapSeconds = 1.0
+    private static let targetAspect = 9.0 / 16.0
+
+    static func make(track: [AnalysisPoseFrame], at time: Double) -> PortraitFollowFrame {
+        guard let crop = interpolatedFullBodyCrop(track: track, at: time) else {
+            return .fullSource
+        }
+        return .tracking(crop)
+    }
+
+    static func fullBodyCrop(for frame: AnalysisPoseFrame) -> NormalizedRect? {
+        let points = Dictionary(uniqueKeysWithValues: frame.keypoints.map { ($0.name, $0) })
+        guard let head = points["nose"],
+              let leftAnkle = points["left_ankle"],
+              let rightAnkle = points["right_ankle"],
+              [head, leftAnkle, rightAnkle].allSatisfy(isReliable) else {
+            return nil
+        }
+        let visible = frame.keypoints.filter(isReliable)
+        guard let first = visible.first else { return nil }
+        let bounds = visible.dropFirst().reduce(
+            (minX: first.x, minY: first.y, maxX: first.x, maxY: first.y)
+        ) { result, point in
+            (min(result.minX, point.x), min(result.minY, point.y), max(result.maxX, point.x), max(result.maxY, point.y))
+        }
+        let paddedWidth = max(0.12, (bounds.maxX - bounds.minX) * 1.5)
+        let paddedHeight = max(0.24, (bounds.maxY - bounds.minY) * 1.18)
+        let width = max(paddedWidth, paddedHeight * targetAspect)
+        let height = width / targetAspect
+        guard width <= 1, height <= 1 else { return nil }
+        let centerX = (bounds.minX + bounds.maxX) / 2
+        let centerY = (bounds.minY + bounds.maxY) / 2
+        return NormalizedRect(
+            minX: min(max(centerX - width / 2, 0), 1 - width),
+            minY: min(max(centerY - height / 2, 0), 1 - height),
+            width: width,
+            height: height
+        )
+    }
+
+    private static func interpolatedFullBodyCrop(
+        track: [AnalysisPoseFrame],
+        at time: Double
+    ) -> NormalizedRect? {
+        guard time.isFinite else { return nil }
+        let crops = track.compactMap { frame -> (time: Double, crop: NormalizedRect)? in
+            guard frame.timeSeconds.isFinite, let crop = fullBodyCrop(for: frame) else { return nil }
+            return (frame.timeSeconds, crop)
+        }.sorted { $0.time < $1.time }
+        guard let first = crops.first else { return nil }
+        if time <= first.time {
+            return first.time - time <= maximumGapSeconds ? first.crop : nil
+        }
+        guard let last = crops.last else { return nil }
+        if time >= last.time {
+            return time - last.time <= maximumGapSeconds ? last.crop : nil
+        }
+        guard let upperIndex = crops.firstIndex(where: { $0.time >= time }) else { return nil }
+        let upper = crops[upperIndex]
+        guard upper.time != time, upperIndex > crops.startIndex else { return upper.crop }
+        let lower = crops[crops.index(before: upperIndex)]
+        guard time - lower.time <= maximumGapSeconds,
+              upper.time - time <= maximumGapSeconds else {
+            return time - lower.time <= maximumGapSeconds ? lower.crop : nil
+        }
+        let progress = (time - lower.time) / (upper.time - lower.time)
+        return NormalizedRect(
+            minX: interpolate(lower.crop.minX, upper.crop.minX, progress),
+            minY: interpolate(lower.crop.minY, upper.crop.minY, progress),
+            width: interpolate(lower.crop.width, upper.crop.width, progress),
+            height: interpolate(lower.crop.height, upper.crop.height, progress)
+        )
+    }
+
+    private static func interpolate(_ lower: Double, _ upper: Double, _ progress: Double) -> Double {
+        lower + (upper - lower) * progress
+    }
+
+    private static func isReliable(_ point: AnalysisPoseKeypoint) -> Bool {
+        point.confidence >= minimumPointConfidence
+            && point.x.isFinite && point.y.isFinite
+            && (0...1).contains(point.x) && (0...1).contains(point.y)
+    }
+}
+
+nonisolated struct PracticeSkeletonSegment: Equatable, Sendable {
+    let from: String
+    let to: String
+}
+
+nonisolated enum PracticeSkeleton {
+    private static let topology = [
+        PracticeSkeletonSegment(from: "nose", to: "left_shoulder"),
+        PracticeSkeletonSegment(from: "nose", to: "right_shoulder"),
+        PracticeSkeletonSegment(from: "left_shoulder", to: "right_shoulder"),
+        PracticeSkeletonSegment(from: "left_shoulder", to: "left_elbow"),
+        PracticeSkeletonSegment(from: "left_elbow", to: "left_wrist"),
+        PracticeSkeletonSegment(from: "right_shoulder", to: "right_elbow"),
+        PracticeSkeletonSegment(from: "right_elbow", to: "right_wrist"),
+        PracticeSkeletonSegment(from: "left_shoulder", to: "left_hip"),
+        PracticeSkeletonSegment(from: "right_shoulder", to: "right_hip"),
+        PracticeSkeletonSegment(from: "left_hip", to: "right_hip"),
+        PracticeSkeletonSegment(from: "left_hip", to: "left_knee"),
+        PracticeSkeletonSegment(from: "left_knee", to: "left_ankle"),
+        PracticeSkeletonSegment(from: "right_hip", to: "right_knee"),
+        PracticeSkeletonSegment(from: "right_knee", to: "right_ankle")
+    ]
+
+    static func segments(for points: [AnalysisPoseKeypoint]) -> [PracticeSkeletonSegment] {
+        let names = Set(points.filter { $0.confidence >= 0.5 }.map(\.name))
+        return topology.filter { names.contains($0.from) && names.contains($0.to) }
+    }
+}
+
 nonisolated enum PortraitFollowProjection {
     static func project(_ source: NormalizedRect, in frame: PortraitFollowFrame) -> CGRect? {
         guard isValid(source),

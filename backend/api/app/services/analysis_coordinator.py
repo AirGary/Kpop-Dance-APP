@@ -66,15 +66,19 @@ class AnalysisCoordinator:
         if not any(candidate.candidate_id == candidate_id for candidate in candidates):
             raise APIError(422, "invalid_candidate", "Candidate was not found.")
         previous = await self._repository.target_selection(owner_id, job_id)
+        current = await self._jobs.get_job(owner_id, job_id)
         if previous is not None:
             previous_candidate, previous_key = previous
             if previous_candidate != candidate_id:
                 raise APIError(409, "target_already_selected", "A different target dancer is already selected.")
             if previous_key == idempotency_key and previous_candidate == candidate_id:
+                if current.state is AnalysisJobState.FAILED_RECOVERABLE:
+                    queued = await self._set_state(owner_id, job_id, AnalysisJobState.QUEUED, 0.55)
+                    await self._schedule_analysis(owner_id, job_id, candidate_id)
+                    return queued
                 return await self._jobs.get_job(owner_id, job_id)
             if previous_key == idempotency_key:
                 raise APIError(409, "idempotency_conflict", "Idempotency key was already used for a different candidate.")
-        current = await self._jobs.get_job(owner_id, job_id)
         if current.state not in {AnalysisJobState.AWAITING_TARGET, AnalysisJobState.QUEUED, AnalysisJobState.ANALYZING, AnalysisJobState.RESULT_READY}:
             raise APIError(409, "invalid_analysis_state", "Analysis is not ready for target selection.")
         if current.state is AnalysisJobState.AWAITING_TARGET:

@@ -391,7 +391,7 @@ class OpenMMLabProbe:
         if not results:
             raise RuntimeProbeError("pose estimator returned no sample")
         keypoints = results[0].pred_instances.keypoints
-        if keypoints.ndim != 3 or keypoints.shape[-1] != 2:
+        if keypoints.ndim != 3 or keypoints.shape[-1] != 2 or keypoints.shape[1] != 133:
             raise RuntimeProbeError("pose estimator returned an invalid keypoint tensor")
 
 

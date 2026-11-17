@@ -66,6 +66,8 @@ nonisolated struct UploadChunkResult: Equatable, Sendable {
 }
 
 nonisolated struct UploadAPIClient: Sendable {
+    static let requestTimeout: TimeInterval = 20
+
     let configuration: JobsAPIConfiguration
     let transport: HTTPTransport
 
@@ -204,6 +206,8 @@ nonisolated struct UploadAPIClient: Sendable {
         successCodes: Set<Int>,
         mapsTerminatedResumableSession: Bool = false
     ) async throws -> (Data, HTTPURLResponse) {
+        var request = request
+        request.timeoutInterval = Self.requestTimeout
         let data: Data
         let response: URLResponse
         do {

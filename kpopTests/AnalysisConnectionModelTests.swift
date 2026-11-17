@@ -5,9 +5,11 @@ import Testing
 @MainActor
 struct AnalysisConnectionModelTests {
     @Test
-    func successfulCreateAndFetchPersistRemoteMetadata() async throws {
+    func diagnosticCreateDoesNotReplaceAnActiveAnalysisJob() async throws {
         let project = try makeProject()
         defer { try? FileManager.default.removeItem(atPath: project.sourceVideoPath!) }
+        let activeJobID = UUID()
+        project.remoteJobId = activeJobID.uuidString
         let jobID = UUID()
         let client = makeClient(jobID: jobID, projectID: project.id)
         let model = AnalysisConnectionModel()
@@ -19,8 +21,8 @@ struct AnalysisConnectionModelTests {
             return
         }
         #expect(job.id == jobID)
-        #expect(project.remoteJobId == jobID.uuidString)
-        #expect(project.sourceFingerprint == "project:\(project.id.uuidString.lowercased())")
+        #expect(project.remoteJobId == activeJobID.uuidString)
+        #expect(project.sourceFingerprint.isEmpty)
     }
 
     @Test
