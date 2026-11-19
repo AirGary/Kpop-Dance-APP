@@ -288,6 +288,12 @@ Stage Lab 是面向 K-pop 翻跳学习者的 iPhone 练习 App。当前最高优
 
 ## 测试与验证记录
 
+### 2026-07-27 Simulator 自动化验证（iPhone 17 Pro Max，iOS 26.5）
+
+- 经用户授权，已重置指定模拟器并重启 CoreSimulator 服务和 Simulator。设备可完成启动，但 `./scripts/verify-ios.sh` 的 `xcodebuild test` 在测试启动阶段仍使设备关闭，生成的 `.xcresult` 缺少 `Info.plist`，因此没有有效的测试通过/失败计数；不得把本次结果视为 iOS 测试通过。
+- 在同一设备目标上单独执行 `kpop-Staging` 的 Staging 构建，以及 `kpop` 的 Release Simulator 构建，均返回 `BUILD SUCCEEDED`。
+- 结论：构建门禁已复核通过；Xcode 26.6 / CoreSimulator 的自动化测试执行问题仍为环境阻塞，需在后续处理，不能据此关闭需要 iOS 测试的验收项。
+
 ### 2026-07-16 本地与部署前
 
 - `./scripts/verify-backend.sh`：146 项通过，0 失败。
